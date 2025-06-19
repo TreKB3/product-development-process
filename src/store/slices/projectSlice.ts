@@ -1,0 +1,387 @@
+import { createSlice, createAsyncThunk, PayloadAction, createSelector } from '@reduxjs/toolkit';
+import { RootState } from '../store';
+
+// Types
+export type ProjectStatus = 'draft' | 'in-progress' | 'review' | 'completed';
+
+export interface TeamMember {
+  id: string;
+  name: string;
+  role: string;
+  email: string;
+}
+
+export interface Velocity {
+  android: number[];
+  ios: number[];
+  web: number[];
+}
+
+export interface Project {
+  id: string;
+  name: string;
+  description: string;
+  status: ProjectStatus;
+  createdAt: string;
+  updatedAt: string;
+  teamMembers: TeamMember[];
+  velocity?: Velocity;
+  // Additional fields
+  businessProblem?: string;
+  targetAudience?: string;
+  successMetrics?: string[];
+  assumptions?: {
+    id: string;
+    description: string;
+    risk: 'low' | 'medium' | 'high';
+    validationStatus: 'not-validated' | 'in-progress' | 'validated' | 'invalidated';
+  }[];
+}
+
+interface ProjectState {
+  projects: Project[];
+  currentProject: Project | null;
+  loading: boolean;
+  error: string | null;
+  filter: {
+    status: ProjectStatus | 'all';
+    search: string;
+  };
+  lastUpdated: number | null;
+}
+
+const initialState: ProjectState = {
+  projects: [],
+  currentProject: null,
+  loading: false,
+  error: null,
+  filter: {
+    status: 'all',
+    search: '',
+  },
+  lastUpdated: null,
+};
+
+// Mock API calls
+const fetchProjects = createAsyncThunk<Project[]>(
+  'projects/fetchAll',
+  async (_, { rejectWithValue }) => {
+    try {
+      // In a real app, this would be an API call
+      const mockProjects: Project[] = [
+        {
+          id: '1',
+          name: 'E-commerce Platform',
+          description: 'Next generation e-commerce platform with AI recommendations',
+          status: 'in-progress',
+          createdAt: '2023-01-15T00:00:00Z',
+          updatedAt: new Date().toISOString(),
+          teamMembers: [
+            { id: '1', name: 'John Doe', role: 'Product Manager', email: 'john@example.com' },
+            { id: '2', name: 'Jane Smith', role: 'Lead Developer', email: 'jane@example.com' },
+            { id: '3', name: 'Alex Johnson', role: 'UX Designer', email: 'alex@example.com' },
+          ],
+          businessProblem: 'Low conversion rates on mobile devices',
+          targetAudience: 'Mobile-first shoppers aged 25-40',
+          successMetrics: ['Increase mobile conversion by 20%', 'Reduce cart abandonment by 15%'],
+          assumptions: [
+            {
+              id: 'a1',
+              description: 'Users abandon cart due to complex checkout process',
+              risk: 'high',
+              validationStatus: 'in-progress'
+            }
+          ],
+          velocity: {
+            android: [5, 8, 7, 10],
+            ios: [3, 5, 6, 7],
+            web: [8, 10, 9, 11],
+          },
+        },
+        {
+          id: '2',
+          name: 'Mobile Banking App',
+          description: 'Redesign of the mobile banking application',
+          status: 'review',
+          createdAt: '2023-02-10T00:00:00Z',
+          updatedAt: '2023-03-15T00:00:00Z',
+          teamMembers: [
+            { id: '4', name: 'Sarah Williams', role: 'Product Owner', email: 'sarah@example.com' },
+            { id: '5', name: 'Mike Brown', role: 'iOS Developer', email: 'mike@example.com' },
+            { id: '6', name: 'Emma Davis', role: 'Android Developer', email: 'emma@example.com' },
+          ],
+          businessProblem: 'Low user engagement with financial planning features',
+          targetAudience: 'Young professionals aged 25-35',
+          successMetrics: ['Increase feature usage by 30%', 'Improve NPS score by 15 points'],
+          assumptions: [
+            {
+              id: 'a2',
+              description: 'Users don\'t use financial planning due to complex UI',
+              risk: 'medium',
+              validationStatus: 'validated'
+            }
+          ]
+        },
+        {
+          id: '3',
+          name: 'Health & Fitness Tracker',
+          description: 'Comprehensive health and fitness tracking application',
+          status: 'draft',
+          createdAt: '2023-03-20T00:00:00Z',
+          updatedAt: '2023-03-25T00:00:00Z',
+          teamMembers: [
+            { id: '7', name: 'David Wilson', role: 'Product Manager', email: 'david@example.com' },
+            { id: '8', name: 'Lisa Chen', role: 'UX Designer', email: 'lisa@example.com' },
+          ],
+          businessProblem: 'Users struggle to maintain fitness routines',
+          targetAudience: 'Health-conscious individuals aged 20-45',
+          successMetrics: ['Increase monthly active users by 25%', 'Improve 30-day retention by 20%'],
+          assumptions: [
+            {
+              id: 'a3',
+              description: 'Personalized workout plans will increase engagement',
+              risk: 'low',
+              validationStatus: 'not-validated'
+            }
+          ]
+        },
+      ];
+      return mockProjects;
+    } catch (error) {
+      return rejectWithValue('Failed to fetch projects');
+    }
+  }
+);
+
+const fetchProjectById = createAsyncThunk<Project, string>(
+  'projects/fetchById',
+  async (id, { rejectWithValue }) => {
+    try {
+      // In a real app, this would be an API call
+      const mockProject: Project = {
+        id,
+        name: 'E-commerce Platform',
+        description: 'Next generation e-commerce platform with AI recommendations',
+        status: 'in-progress',
+        createdAt: '2023-01-15T00:00:00Z',
+        updatedAt: new Date().toISOString(),
+        teamMembers: [
+          { id: '1', name: 'John Doe', role: 'Product Manager', email: 'john@example.com' },
+          { id: '2', name: 'Jane Smith', role: 'Lead Developer', email: 'jane@example.com' },
+          { id: '3', name: 'Mike Johnson', role: 'UX Designer', email: 'mike@example.com' },
+        ],
+        velocity: {
+          android: [5, 8, 7, 10],
+          ios: [3, 5, 6, 7],
+          web: [8, 10, 9, 11],
+        },
+        businessProblem: 'Users struggle to find relevant products quickly, leading to cart abandonment.',
+        targetAudience: 'Online shoppers aged 18-45 who value personalized shopping experiences',
+        successMetrics: [
+          'Increase conversion rate by 15%',
+          'Reduce average session duration by 20%',
+          'Improve customer satisfaction score by 10%',
+        ],
+        assumptions: [
+          {
+            id: '1',
+            description: 'Users want AI-powered product recommendations',
+            risk: 'medium',
+            validationStatus: 'in-progress',
+          },
+        ],
+      };
+      return mockProject;
+    } catch (error) {
+      return rejectWithValue('Failed to fetch project');
+    }
+  }
+);
+
+const projectSlice = createSlice({
+  name: 'projects',
+  initialState,
+  reducers: {
+    setLoading: (state, action: PayloadAction<boolean>) => {
+      state.loading = action.payload;
+    },
+    setError: (state, action: PayloadAction<string | null>) => {
+      state.error = action.payload;
+    },
+    setProjects: (state, action: PayloadAction<Project[]>) => {
+      state.projects = action.payload;
+      state.lastUpdated = Date.now();
+    },
+    setCurrentProject: (state, action: PayloadAction<Project | null>) => {
+      state.currentProject = action.payload;
+    },
+    addProject: (state, action: PayloadAction<Project>) => {
+      state.projects.push({
+        ...action.payload,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+      state.lastUpdated = Date.now();
+    },
+    updateProject: (state, action: PayloadAction<Project>) => {
+      const index = state.projects.findIndex(p => p.id === action.payload.id);
+      if (index !== -1) {
+        state.projects[index] = {
+          ...state.projects[index],
+          ...action.payload,
+          updatedAt: new Date().toISOString()
+        };
+        state.lastUpdated = Date.now();
+      }
+    },
+    deleteProject: (state, action: PayloadAction<string>) => {
+      const index = state.projects.findIndex(p => p.id === action.payload);
+      if (index !== -1) {
+        state.projects.splice(index, 1);
+        state.lastUpdated = Date.now();
+      }
+    },
+    setFilterStatus: (state, action: PayloadAction<ProjectStatus | 'all'>) => {
+      state.filter.status = action.payload;
+    },
+    setSearchTerm: (state, action: PayloadAction<string>) => {
+      state.filter.search = action.payload.toLowerCase();
+    },
+    resetFilters: (state) => {
+      state.filter = {
+        status: 'all',
+        search: ''
+      };
+    },
+  },
+  extraReducers: (builder) => {
+    builder
+      .addCase(fetchProjects.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(fetchProjects.fulfilled, (state, action) => {
+        state.loading = false;
+        state.projects = action.payload;
+        state.lastUpdated = Date.now();
+      })
+      .addCase(fetchProjects.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload as string;
+      })
+      .addCase(fetchProjectById.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(fetchProjectById.fulfilled, (state, action) => {
+        state.loading = false;
+        state.currentProject = action.payload;
+      })
+      .addCase(fetchProjectById.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload as string;
+      });
+  },
+});
+
+// Export actions
+export const {
+  setLoading,
+  setError,
+  setProjects,
+  setCurrentProject,
+  addProject,
+  updateProject,
+  deleteProject,
+  setFilterStatus,
+  setSearchTerm,
+  resetFilters,
+} = projectSlice.actions;
+
+// Export async thunks
+export { fetchProjects, fetchProjectById };
+
+// Selectors
+export const selectProjectsState = (state: RootState) => state.projects;
+
+export const selectAllProjects = createSelector(
+  [selectProjectsState],
+  (projectsState) => projectsState.projects
+);
+
+export const selectProjectById = (projectId: string) => 
+  createSelector(
+    [selectAllProjects],
+    (projects) => projects.find(project => project.id === projectId)
+  );
+
+export const selectFilteredProjects = createSelector(
+  [selectProjectsState],
+  (state) => {
+    const { projects, filter } = state;
+    const { status, search } = filter;
+
+    return projects.filter(project => {
+      const matchesStatus = status === 'all' || project.status === status;
+      
+      if (!search) return matchesStatus;
+      
+      const searchLower = search.toLowerCase();
+      const matchesSearch = 
+        project.name.toLowerCase().includes(searchLower) ||
+        project.description.toLowerCase().includes(searchLower) ||
+        project.businessProblem?.toLowerCase().includes(searchLower) ||
+        project.targetAudience?.toLowerCase().includes(searchLower) ||
+        project.teamMembers.some(member => 
+          member.name.toLowerCase().includes(searchLower) ||
+          member.role.toLowerCase().includes(searchLower)
+        );
+      
+      return matchesStatus && matchesSearch;
+    });
+  }
+);
+
+export const selectProjectStats = createSelector(
+  [selectAllProjects],
+  (projects) => {
+    return {
+      total: projects.length,
+      inProgress: projects.filter(p => p.status === 'in-progress').length,
+      inReview: projects.filter(p => p.status === 'review').length,
+      completed: projects.filter(p => p.status === 'completed').length,
+      draft: projects.filter(p => p.status === 'draft').length,
+    };
+  }
+);
+
+export const selectRecentProjects = createSelector(
+  [selectAllProjects],
+  (projects) => {
+    return [...projects]
+      .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+      .slice(0, 5);
+  }
+);
+
+export const selectProjectTeamMembers = (projectId: string) => 
+  createSelector(
+    [selectProjectById(projectId)],
+    (project) => project?.teamMembers || []
+  );
+
+export const selectProjectAssumptions = (projectId: string) => 
+  createSelector(
+    [selectProjectById(projectId)],
+    (project) => project?.assumptions || []
+  );
+
+export const selectProjectByStatus = (status: ProjectStatus | 'all') => 
+  createSelector(
+    [selectAllProjects],
+    (projects) => status === 'all' 
+      ? projects 
+      : projects.filter(project => project.status === status)
+  );
+
+export default projectSlice.reducer;
