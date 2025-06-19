@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
+import { v4 as uuidv4 } from 'uuid';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { 
@@ -11,9 +12,15 @@ import {
 } from '@mui/material';
 import { ArrowBack } from '@mui/icons-material';
 import ProjectForm from '../components/ProjectForm';
-import { updateProject, fetchProjectById, selectAllProjects } from '../store/slices/projectSlice';
+import { 
+  updateProject, 
+  fetchProjectById, 
+  selectAllProjects,
+  Project,
+  TeamMember,
+  ProjectStatus
+} from '../store/slices/projectSlice';
 import { AppDispatch, RootState } from '../store/store';
-import { Project, TeamMember } from '../store/slices/projectSlice';
 
 const EditProject: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -65,22 +72,38 @@ const EditProject: React.FC = () => {
     }
   }, [id, project, dispatch]);
 
-  const handleSubmit = async (data: Omit<Project, 'id' | 'createdAt' | 'updatedAt'>) => {
+  type FormData = Omit<Project, 'id' | 'createdAt' | 'updatedAt' | 'velocity'> & {
+    successMetrics: string[];
+    assumptions: Array<{
+      id?: string;
+      description: string;
+      risk: 'low' | 'medium' | 'high';
+      validationStatus?: 'not-validated' | 'in-progress' | 'validated' | 'invalidated';
+    }>;
+  };
+
+  const handleSubmit = useCallback(async (formData: FormData) => {
     if (!id || !project) return;
     
     try {
       setIsSubmitting(true);
       setError(null);
       
-      // In a real app, this would be an API call
+      // Transform form data to match Project type
       const updatedProject: Project = {
-        ...data,
-        id,
-        teamMembers: data.teamMembers || [],
-        businessProblem: data.businessProblem || '',
-        targetAudience: data.targetAudience || '',
-        successMetrics: data.successMetrics || [],
-        assumptions: data.assumptions || [],
+        ...formData,
+        id: id!,
+        status: formData.status as ProjectStatus,
+        teamMembers: formData.teamMembers || [],
+        businessProblem: formData.businessProblem || '',
+        targetAudience: formData.targetAudience || '',
+        successMetrics: formData.successMetrics || [],
+        assumptions: (formData.assumptions || []).map(assumption => ({
+          id: assumption.id || uuidv4(),
+          description: assumption.description,
+          risk: assumption.risk,
+          validationStatus: assumption.validationStatus || 'not-validated'
+        })),
         velocity: project.velocity || { android: [], ios: [], web: [] },
         createdAt: project.createdAt || new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -89,7 +112,12 @@ const EditProject: React.FC = () => {
       // Simulate API delay
       await new Promise(resolve => setTimeout(resolve, 1000));
       
-      dispatch(updateProject(updatedProject));
+      try {
+        await dispatch(updateProject(updatedProject));
+      } catch (err) {
+        console.error('Failed to update project:', err);
+        throw new Error('Failed to update project. Please try again.');
+      }
       
       // Navigate back to the project
       navigate(`/projects/${id}`);
@@ -99,7 +127,7 @@ const EditProject: React.FC = () => {
     } finally {
       setIsSubmitting(false);
     }
-  };
+  }, [dispatch, id, navigate, project]);
 
   const handleCloseSnackbar = () => {
     setError(null);
@@ -158,13 +186,18 @@ const EditProject: React.FC = () => {
           name: project.name,
           description: project.description,
           status: project.status,
-          teamMembers: project.teamMembers,
+          teamMembers: project.teamMembers || [],
           businessProblem: project.businessProblem || '',
           targetAudience: project.targetAudience || '',
           successMetrics: project.successMetrics || [],
-          assumptions: project.assumptions || [],
+          assumptions: (project.assumptions || []).map(a => ({
+            id: a.id,
+            description: a.description,
+            risk: a.risk,
+            validationStatus: a.validationStatus
+          }))
         }}
-        onSubmit={handleSubmit}
+        onSubmit={handleSubmit as any}
         isSubmitting={isSubmitting}
         title="Edit Project"
         submitButtonText="Save Changes"
