@@ -2,7 +2,7 @@ import { createSlice, createAsyncThunk, PayloadAction, createSelector } from '@r
 import { RootState } from '../store';
 
 // Types
-export type ProjectStatus = 'draft' | 'in-progress' | 'review' | 'completed';
+export type ProjectStatus = 'planning' | 'draft' | 'in-progress' | 'review' | 'completed';
 
 export interface TeamMember {
   id: string;
@@ -17,15 +17,29 @@ export interface Velocity {
   web: number[];
 }
 
+export interface ProjectMetadata {
+  aiGenerated?: boolean;
+  sourceDocuments?: string[];
+  analysis?: {
+    phases?: Array<{ name: string; description: string }>;
+    personas?: Array<{ name: string; description: string; goals: string[]; painPoints: string[] }>;
+    requirements?: string[];
+  };
+  [key: string]: any; // For additional metadata
+}
+
 export interface Project {
   id: string;
   name: string;
   description: string;
   status: ProjectStatus;
+  startDate?: string;
+  endDate?: string;
   createdAt: string;
   updatedAt: string;
-  teamMembers: TeamMember[];
+  teamMembers?: TeamMember[];
   velocity?: Velocity;
+  metadata?: ProjectMetadata;
   // Additional fields
   businessProblem?: string;
   targetAudience?: string;
@@ -306,22 +320,40 @@ export const selectProjectsState = (state: RootState) => state.projects;
 
 export const selectAllProjects = createSelector(
   [selectProjectsState],
-  (projectsState) => projectsState.projects
+  (projectsState: { projects: Project[] }) => projectsState.projects
 );
 
 export const selectProjectById = (projectId: string) => 
   createSelector(
     [selectAllProjects],
-    (projects) => projects.find(project => project.id === projectId)
+    (projects: Project[]) => projects.find(project => project.id === projectId)
+  );
+
+export const selectProjectTeamMembers = (projectId: string) =>
+  createSelector(
+    [selectProjectById(projectId)],
+    (project: Project | undefined) => project?.teamMembers || []
+  );
+
+export const selectProjectAssumptions = (projectId: string) =>
+  createSelector(
+    [selectProjectById(projectId)],
+    (project: Project | undefined) => project?.assumptions || []
+  );
+
+export const selectProjectByStatus = (status: ProjectStatus | 'all') =>
+  createSelector(
+    [selectAllProjects],
+    (projects: Project[]) => projects.filter(project => status === 'all' || project.status === status)
   );
 
 export const selectFilteredProjects = createSelector(
   [selectProjectsState],
-  (state) => {
+  (state: { projects: Project[], filter: { status: ProjectStatus | 'all', search: string } }) => {
     const { projects, filter } = state;
     const { status, search } = filter;
 
-    return projects.filter(project => {
+    return projects.filter((project: Project) => {
       const matchesStatus = status === 'all' || project.status === status;
       
       if (!search) return matchesStatus;
@@ -330,12 +362,12 @@ export const selectFilteredProjects = createSelector(
       const matchesSearch = 
         project.name.toLowerCase().includes(searchLower) ||
         project.description.toLowerCase().includes(searchLower) ||
-        project.businessProblem?.toLowerCase().includes(searchLower) ||
-        project.targetAudience?.toLowerCase().includes(searchLower) ||
-        project.teamMembers.some(member => 
+        (project.teamMembers || []).some(member => 
           member.name.toLowerCase().includes(searchLower) ||
           member.role.toLowerCase().includes(searchLower)
-        );
+        ) ||
+        (project.businessProblem?.toLowerCase().includes(searchLower) || false) ||
+        (project.targetAudience?.toLowerCase().includes(searchLower) || false);
       
       return matchesStatus && matchesSearch;
     });
@@ -344,44 +376,22 @@ export const selectFilteredProjects = createSelector(
 
 export const selectProjectStats = createSelector(
   [selectAllProjects],
-  (projects) => {
-    return {
-      total: projects.length,
-      inProgress: projects.filter(p => p.status === 'in-progress').length,
-      inReview: projects.filter(p => p.status === 'review').length,
-      completed: projects.filter(p => p.status === 'completed').length,
-      draft: projects.filter(p => p.status === 'draft').length,
-    };
-  }
+  (projects: Project[]) => ({
+    total: projects.length,
+    inProgress: projects.filter((p: Project) => p.status === 'in-progress').length,
+    inReview: projects.filter((p: Project) => p.status === 'review').length,
+    completed: projects.filter((p: Project) => p.status === 'completed').length,
+    draft: projects.filter((p: Project) => p.status === 'draft').length,
+  })
 );
 
 export const selectRecentProjects = createSelector(
   [selectAllProjects],
-  (projects) => {
+  (projects: Project[]) => {
     return [...projects]
-      .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+      .sort((a: Project, b: Project) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
       .slice(0, 5);
   }
 );
-
-export const selectProjectTeamMembers = (projectId: string) => 
-  createSelector(
-    [selectProjectById(projectId)],
-    (project) => project?.teamMembers || []
-  );
-
-export const selectProjectAssumptions = (projectId: string) => 
-  createSelector(
-    [selectProjectById(projectId)],
-    (project) => project?.assumptions || []
-  );
-
-export const selectProjectByStatus = (status: ProjectStatus | 'all') => 
-  createSelector(
-    [selectAllProjects],
-    (projects) => status === 'all' 
-      ? projects 
-      : projects.filter(project => project.status === status)
-  );
 
 export default projectSlice.reducer;

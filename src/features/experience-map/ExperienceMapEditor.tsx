@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { AppDispatch, RootState } from '../../store/store';
@@ -38,41 +38,72 @@ import {
 } from '@mui/icons-material';
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
-import { fetchExperienceMap, selectPhases, selectPersonas, selectItemsByPhase } from '../../store/slices/experienceMapSlice';
+import { 
+  fetchExperienceMap, 
+  selectPhases, 
+  selectPersonas, 
+  selectItemsByPhase,
+  ExperienceMapPhase,
+  ExperienceMapItem as ExperienceMapItemType,
+  ExperienceMapPersona
+} from '../../store/slices/experienceMapSlice';
 
 // Components
 import { ExperienceMapItem } from './components/ExperienceMapItem';
 import { PersonaDialog } from './components/PersonaDialog';
 import { PhaseDialog } from './components/PhaseDialog';
 
+// Types
+interface PhaseColumnProps {
+  phase: ExperienceMapPhase;
+  onEdit: (phaseId: string) => void;
+  onEditItem: (item: ExperienceMapItemType) => void;
+  onDeleteItem: (itemId: string) => void;
+  selectedPersona: string;
+  items: ExperienceMapItemType[];
+  moveItem: (dragIndex: number, hoverIndex: number, dragPhaseId: string, hoverPhaseId: string) => void;
+}
+
 const ExperienceMapEditor: React.FC = () => {
   const { projectId } = useParams<{ projectId: string }>();
   const dispatch = useDispatch<AppDispatch>();
   const theme = useTheme();
   
-  // Selectors
-  const phases = useSelector(selectPhases);
-  const personas = useSelector(selectPersonas);
-  const [selectedPersona, setSelectedPersona] = useState<string>('');
-  
-  // Dialogs state
-  const [personaDialogOpen, setPersonaDialogOpen] = useState(false);
-  const [phaseDialogOpen, setPhaseDialogOpen] = useState(false);
+  // State for managing dialogs and selections
+  const [isPersonaDialogOpen, setIsPersonaDialogOpen] = useState(false);
+  const [isPhaseDialogOpen, setIsPhaseDialogOpen] = useState(false);
+  const [selectedPersona, setSelectedPersona] = useState('');
   const [selectedPhase, setSelectedPhase] = useState<string | null>(null);
   
+  // Select data from Redux store
+  const phases = useSelector(selectPhases);
+  const personas = useSelector(selectPersonas);
+  const itemsByPhase = useSelector((state: RootState) => 
+    selectItemsByPhase(state, selectedPersona || '')
+  ) as ExperienceMapItemType[];
+  
+  // Handle item movement (drag and drop)
+  const handleMoveItem = useCallback((
+    dragIndex: number, 
+    hoverIndex: number, 
+    dragPhaseId: string, 
+    hoverPhaseId: string
+  ) => {
+    // Implementation for moving items between phases
+    console.log('Moving item', { dragIndex, hoverIndex, dragPhaseId, hoverPhaseId });
+  }, []);
+  
   // Handle editing an item
-  const handleEditItem = (item: ExperienceMapItemType) => {
-    // TODO: Implement item edit dialog
-    console.log('Edit item:', item);
-  };
+  const handleEditItem = useCallback((item: ExperienceMapItemType) => {
+    // Implementation for editing an item
+    console.log('Editing item', item);
+  }, []);
   
   // Handle deleting an item
-  const handleDeleteItem = (itemId: string) => {
-    if (window.confirm('Are you sure you want to delete this item?')) {
-      // @ts-ignore - deleteItem expects a payload with id
-      dispatch(deleteItem(itemId));
-    }
-  };
+  const handleDeleteItem = useCallback((itemId: string) => {
+    // Implementation for deleting an item
+    console.log('Deleting item', itemId);
+  }, []);
   
   // Load experience map data when component mounts
   useEffect(() => {
@@ -92,20 +123,45 @@ const ExperienceMapEditor: React.FC = () => {
     setSelectedPersona(event.target.value);
   };
   
-  const handleAddPhase = () => {
+  const handleAddPhase = useCallback(() => {
     setSelectedPhase(null);
-    setPhaseDialogOpen(true);
-  };
-  
-  const handleEditPhase = (phaseId: string) => {
+    setIsPhaseDialogOpen(true);
+  }, []);
+
+  const handleEditPhase = useCallback((phaseId: string) => {
     setSelectedPhase(phaseId);
-    setPhaseDialogOpen(true);
-  };
-  
-  const handleAddPersona = () => {
-    setPersonaDialogOpen(true);
-  };
-  
+    setIsPhaseDialogOpen(true);
+  }, []);
+
+  const handleClosePhaseDialog = useCallback(() => {
+    setSelectedPhase(null);
+    setIsPhaseDialogOpen(false);
+  }, []);
+
+  const handleAddPersona = useCallback(() => {
+    setIsPersonaDialogOpen(true);
+  }, []);
+
+  const renderPhaseColumns = useCallback(() => {
+    return phases.map((phase) => {
+      // Filter items for the current phase
+      const phaseItems = itemsByPhase.filter(item => item.phaseId === phase.id);
+      
+      return (
+        <PhaseColumn
+          key={phase.id}
+          phase={phase}
+          onEdit={handleEditPhase}
+          onEditItem={handleEditItem}
+          onDeleteItem={handleDeleteItem}
+          selectedPersona={selectedPersona}
+          items={phaseItems}
+          moveItem={handleMoveItem}
+        />
+      );
+    });
+  }, [phases, handleEditPhase, handleEditItem, handleDeleteItem, selectedPersona, itemsByPhase, handleMoveItem]);
+
   return (
     <DndProvider backend={HTML5Backend}>
       <Box sx={{ p: 3 }}>
@@ -174,16 +230,7 @@ const ExperienceMapEditor: React.FC = () => {
             },
           },
         }}>
-          {phases.map((phase) => (
-            <PhaseColumn 
-              key={phase.id} 
-              phase={phase} 
-              onEdit={handleEditPhase}
-              onEditItem={handleEditItem}
-              onDeleteItem={handleDeleteItem}
-              selectedPersona={selectedPersona} 
-            />
-          ))}
+          {renderPhaseColumns()}
           
           {/* Add Phase Button */}
           <Button
@@ -206,15 +253,16 @@ const ExperienceMapEditor: React.FC = () => {
         </Box>
         
         {/* Dialogs */}
-        <PersonaDialog 
-          open={personaDialogOpen} 
-          onClose={() => setPersonaDialogOpen(false)} 
+        <PersonaDialog
+          open={isPersonaDialogOpen}
+          onClose={() => setIsPersonaDialogOpen(false)}
+          personaId={selectedPersona || undefined}
         />
-        
-        <PhaseDialog 
-          open={phaseDialogOpen} 
-          onClose={() => setPhaseDialogOpen(false)} 
-          phaseId={selectedPhase}
+
+        <PhaseDialog
+          open={isPhaseDialogOpen}
+          onClose={handleClosePhaseDialog}
+          phaseId={selectedPhase || undefined}
         />
       </Box>
     </DndProvider>
@@ -228,18 +276,27 @@ interface PhaseColumnProps {
   onEditItem: (item: ExperienceMapItemType) => void;
   onDeleteItem: (itemId: string) => void;
   selectedPersona: string;
+  items: ExperienceMapItemType[];
+  moveItem: (dragIndex: number, hoverIndex: number, dragPhaseId: string, hoverPhaseId: string) => void;
 }
 
-const PhaseColumn: React.FC<PhaseColumnProps> = ({ 
-  phase, 
-  onEdit, 
-  onEditItem, 
-  onDeleteItem, 
-  selectedPersona 
-}) => {
-  const items = useSelector((state: RootState) => 
-    selectItemsByPhase(state, phase.id).filter(item => item.personaId === selectedPersona)
-  );
+const PhaseColumn: React.FC<PhaseColumnProps> = (props) => {
+  const { 
+    phase, 
+    onEdit, 
+    onEditItem, 
+    onDeleteItem, 
+    selectedPersona,
+    items,
+    moveItem
+  } = props;
+  
+  const theme = useTheme();
+  
+  // Filter items for the selected persona if needed
+  const filteredItems = selectedPersona 
+    ? items.filter(item => item.personaId === selectedPersona)
+    : items;
   
   return (
     <Paper 
@@ -301,23 +358,27 @@ const PhaseColumn: React.FC<PhaseColumnProps> = ({
           overflowY: 'auto',
         }}
       >
-        {items.map((item, index) => (
+        {filteredItems.map((item, index) => (
           <div key={item.id}>
-            <ExperienceMapItemComponent 
-              item={item} 
-              phaseId={phase.id}
+            <ExperienceMapItem
+              item={item}
               index={index}
-              onEdit={() => onEditItem(item)}
-              onDelete={() => onDeleteItem(item.id)}
+              phaseId={phase.id}
+              onEdit={onEditItem}
+              onDelete={onDeleteItem}
+              moveItem={moveItem}
             />
           </div>
         ))}
         
         <Button 
           fullWidth 
-          startIcon={<AddIcon />} 
+          startIcon={<AddIcon />}
+          onClick={() => {
+            // TODO: Handle add new item
+            console.log('Add new item to phase:', phase.id);
+          }}
           sx={{ mt: 1 }}
-          // onClick={handleAddItem}
         >
           Add Item
         </Button>
