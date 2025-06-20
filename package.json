@@ -10,10 +10,20 @@
     "@mui/material": "^7.1.1",
     "@mui/system": "^7.1.1",
     "@mui/x-date-pickers": "^8.5.2",
+    "@redlistai/core": "latest",
+    "@redlistai/react-components": "latest",
+    "@redlistai/theme": "latest",
     "@reduxjs/toolkit": "^2.8.2",
     "@types/react-dropzone": "^4.2.2",
+    "axios": "^1.10.0",
+    "cors": "^2.8.5",
     "cra-template-typescript": "1.3.0",
     "date-fns": "^4.1.0",
+    "dotenv": "^16.5.0",
+    "express": "^5.1.0",
+    "form-data": "^4.0.3",
+    "multer": "^2.0.1",
+    "openai": "^5.5.1",
     "react": "^19.1.0",
     "react-color": "^2.19.3",
     "react-dnd": "^16.0.1",
@@ -28,11 +38,17 @@
     "yup": "^1.6.1"
   },
   "scripts": {
-    "start": "react-scripts start",
+    "start": "PORT=3001 react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test",
-    "eject": "react-scripts eject"
+    "eject": "react-scripts eject",
+    "server": "node server/index.js",
+    "dev": "concurrently \"npm run start\" \"npm run server\"",
+    "server:watch": "nodemon server/index.js",
+    "redlist:init": "redlist init",
+    "redlist:start": "redlist start"
   },
+  "proxy": "http://localhost:5000",
   "eslintConfig": {
     "extends": [
       "react-app",
@@ -55,14 +71,19 @@
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.3.0",
     "@testing-library/user-event": "^14.6.1",
+    "@types/express": "^4.17.21",
     "@types/jest": "^30.0.0",
     "@types/jspdf": "^1.3.3",
-    "@types/node": "^24.0.1",
+    "@types/multer": "^1.4.11",
+    "@types/node": "^24.0.3",
     "@types/react-color": "^3.0.13",
     "@types/react-dom": "^19.1.6",
     "@types/react-router-dom": "^5.3.3",
     "@types/testing-library__react": "^10.0.1",
     "@types/uuid": "^10.0.0",
-    "@types/yup": "^0.29.14"
+    "@types/yup": "^0.29.14",
+    "concurrently": "^8.2.2",
+    "nodemon": "^3.1.10",
+    "wait-on": "^7.2.0"
   }
 }

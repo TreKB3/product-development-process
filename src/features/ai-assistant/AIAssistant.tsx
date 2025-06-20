@@ -16,68 +16,61 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ onProjectGenerated, onCancel 
   const [error, setError] = useState<string | null>(null);
   const [analysisResult, setAnalysisResult] = useState<any>(null);
 
-  const handleFilesUploaded = useCallback(async (uploadedFiles: File[]) => {
-    try {
-      setIsProcessing(true);
-      setError(null);
-      
-      // In a real app, this would upload files to your backend
-      // and process them with AI (e.g., using OpenAI's API)
-      console.log('Uploading files:', uploadedFiles);
-      
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      // Mock analysis result - in a real app, this would come from your backend
-      const mockAnalysis = {
-        projectName: 'AI-Generated Project',
-        description: 'This project was generated based on the uploaded documents.',
-        phases: [
-          { name: 'Discovery', description: 'Initial research and requirements gathering' },
-          { name: 'Design', description: 'UI/UX and system design' },
-          { name: 'Development', description: 'Implementation and coding' },
-          { name: 'Testing', description: 'Quality assurance and testing' },
-          { name: 'Deployment', description: 'Release and deployment' },
-        ],
-        personas: [
-          { 
-            name: 'End User', 
-            description: 'Primary user of the application',
-            goals: ['Ease of use', 'Efficiency', 'Reliability'],
-            painPoints: ['Complex interfaces', 'Slow performance', 'Bugs and errors']
-          }
-        ],
-        requirements: [
-          'User authentication system',
-          'Responsive design for all devices',
-          'Data visualization capabilities',
-          'Export functionality',
-          'User settings and preferences'
-        ]
-      };
-      
-      setAnalysisResult(mockAnalysis);
-      setActiveStep(1);
-    } catch (err) {
-      console.error('Error processing files:', err);
-      setError('Failed to process documents. Please try again.');
-    } finally {
-      setIsProcessing(false);
-    }
-  }, []);
-
-  const handleGenerateProject = () => {
-    if (analysisResult) {
-      onProjectGenerated(analysisResult);
-    }
-  };
-
+  // Navigation handlers
   const handleBack = () => {
     setActiveStep((prevStep) => prevStep - 1);
   };
 
-  const handleNext = () => {
+  const handleNext = useCallback(() => {
     setActiveStep((prevStep) => prevStep + 1);
+  }, []);
+
+  // File and analysis handlers
+  const handleFilesUploaded = useCallback((uploadedFiles: File[]) => {
+    console.log('Files uploaded for processing:', uploadedFiles);
+    // Files are now processed through Redux in DocumentUpload
+    // The actual processing will be handled by the Redux action
+  }, []);
+
+  const handleAnalysisComplete = useCallback((result: any) => {
+    console.log('Analysis complete:', result);
+    // The result should already be in the correct format from the Redux slice
+    setAnalysisResult(result);
+    handleNext();
+  }, [handleNext]);
+
+  const handleGenerateProject = useCallback(() => {
+    if (analysisResult) {
+      onProjectGenerated(analysisResult);
+    }
+  }, [analysisResult, onProjectGenerated]);
+
+  // Mock data to be removed when backend is implemented
+  const mockAnalysis = {
+    projectName: 'AI-Generated Project',
+    description: 'This project was generated based on the uploaded documents.',
+    phases: [
+      { name: 'Discovery', description: 'Initial research and requirements gathering' },
+      { name: 'Design', description: 'UI/UX and system design' },
+      { name: 'Development', description: 'Implementation and coding' },
+      { name: 'Testing', description: 'Quality assurance and testing' },
+      { name: 'Deployment', description: 'Release and deployment' },
+    ],
+    personas: [
+      { 
+        name: 'End User', 
+        description: 'Primary user of the application',
+        goals: ['Ease of use', 'Efficiency', 'Reliability'],
+        painPoints: ['Complex interfaces', 'Slow performance', 'Bugs and errors']
+      }
+    ],
+    requirements: [
+      'User authentication system',
+      'Responsive design for all devices',
+      'Data visualization capabilities',
+      'Export functionality',
+      'User settings and preferences'
+    ]
   };
 
   const renderStepContent = (step: number) => {
@@ -85,8 +78,9 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ onProjectGenerated, onCancel 
       case 0:
         return (
           <DocumentUpload
-            onFilesUploaded={handleFilesUploaded}
-            isProcessing={isProcessing}
+            onFilesChange={handleFilesUploaded}
+            onAnalysisComplete={handleAnalysisComplete}
+            disabled={isProcessing}
           />
         );
       case 1:
