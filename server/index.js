@@ -22,9 +22,6 @@ const corsOptions = {
 // Apply CORS with the above options
 app.use(cors(corsOptions));
 
-// Apply CORS with the above options
-app.use(cors(corsOptions));
-
 // Log all requests
 app.use((req, res, next) => {
   console.log(`\n=== New Request ===`);
@@ -46,10 +43,13 @@ app.use((req, res, next) => {
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Log the request body after parsing
+// Log the request body after parsing (moved after body parsers)
 app.use((req, res, next) => {
-  if (Object.keys(req.body).length > 0) {
-    console.log('Parsed request body:', JSON.stringify(req.body, null, 2));
+  // Only log for non-multipart requests (multipart/form-data is handled by multer)
+  if (req.headers['content-type'] && !req.headers['content-type'].startsWith('multipart/form-data')) {
+    if (req.body && typeof req.body === 'object' && Object.keys(req.body).length > 0) {
+      console.log('Parsed request body:', JSON.stringify(req.body, null, 2));
+    }
   }
   next();
 });
@@ -191,18 +191,50 @@ if (useMock) {
   }
 }
 
-// Health check endpoint
+// Health check endpoint with better error handling
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', message: 'AI Assistant API is running' });
+  try {
+    console.log('Health check endpoint called');
+    const healthCheck = {
+      status: 'ok',
+      message: 'AI Assistant API is running',
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+      openai: !!openai ? 'initialized' : 'not initialized',
+      mockMode: useMock,
+      nodeEnv: process.env.NODE_ENV || 'development',
+      port: SERVER_PORT
+    };
+    console.log('Health check response:', healthCheck);
+    res.json(healthCheck);
+  } catch (error) {
+    console.error('Health check error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Health check failed',
+      error: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
+  }
 });
 
 // File upload and process endpoint
 app.post('/api/process-documents', (req, res, next) => {
-  console.log('Processing upload request...');
+  console.log('\n=== Starting upload request ===');
+  console.log('Request method:', req.method);
+  console.log('Request URL:', req.originalUrl);
+  console.log('Content-Type header:', req.headers['content-type']);
   console.log('Request headers:', JSON.stringify(req.headers, null, 2));
-  console.log('Request body keys:', Object.keys(req.body));
+  
+  // Log request body for non-multipart requests
+  if (req.body && typeof req.body === 'object' && Object.keys(req.body).length > 0) {
+    console.log('Request body:', JSON.stringify(req.body, null, 2));
+  } else {
+    console.log('No request body or empty body');
+  }
   
   // Handle the upload with multer
+  console.log('\n=== Multer upload starting ===');
   upload.array('files')(req, res, function(err) {
     if (err instanceof multer.MulterError) {
       // A Multer error occurred when uploading
@@ -325,18 +357,39 @@ app.post('/api/process-documents', (req, res, next) => {
   }
 });
 
-// Error handling middleware
+// Error handling middleware with detailed logging
 app.use((err, req, res, next) => {
-  console.error(err.stack);
+  console.error('\n=== ERROR ===');
+  console.error('Error:', err);
+  console.error('Stack:', err.stack);
+  console.error('Request URL:', req.originalUrl);
+  console.error('Request Method:', req.method);
+  console.error('Request Headers:', JSON.stringify(req.headers, null, 2));
+  console.error('Request Body:', req.body ? JSON.stringify(req.body, null, 2) : 'No body');
+  console.error('Request Query:', JSON.stringify(req.query, null, 2));
+  console.error('Request Params:', JSON.stringify(req.params, null, 2));
+  
+  // Check for specific error types
+  if (err.name === 'TypeError' && err.message.includes('Cannot convert undefined or null to object')) {
+    console.error('TypeError detected - likely trying to access a property on undefined/null');
+  }
+  
+  // Send error response
   res.status(500).json({
-    error: 'Something went wrong!',
-    message: err.message,
+    error: 'Internal Server Error',
+    message: process.env.NODE_ENV === 'development' ? err.message : 'An unexpected error occurred',
+    ...(process.env.NODE_ENV === 'development' && { 
+      stack: err.stack,
+      name: err.name,
+      details: err.toString()
+    })
   });
 });
 
-// Start the server
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
+// Start the server on a different port to avoid conflicts
+const SERVER_PORT = 5001; // Changed from 5000 to 5001
+app.listen(SERVER_PORT, '0.0.0.0', () => {
+  console.log(`Server is running on port ${SERVER_PORT}`);
 });
 
 module.exports = app;

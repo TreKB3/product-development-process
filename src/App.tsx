@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Provider } from 'react-redux';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
@@ -13,6 +13,7 @@ import EditProject from './pages/EditProject';
 import ExperienceMapPage from './pages/ExperienceMapPage';
 import StoryMap from './features/story-map/StoryMapEditor';
 import Documentation from './pages/Documentation';
+import AIAssistant from './features/ai-assistant/AIAssistant';
 
 const theme = createTheme({
   palette: {
@@ -52,6 +53,19 @@ function App() {
               <Route path="/projects/:projectId/experience-map" element={<ExperienceMapPage />} />
               <Route path="/projects/:id/story-map" element={<StoryMap />} />
               <Route path="/projects/:id/documentation" element={<Documentation />} />
+              {/* Add the missing routes with redirects */}
+              <Route path="/ai-assistant" element={
+                <AIAssistant 
+                  onProjectGenerated={(projectData) => {
+                    // Handle project generation (e.g., navigate to project detail)
+                    console.log('Project generated:', projectData);
+                  }} 
+                  onCancel={() => window.history.back()} 
+                />
+              } />
+              <Route path="/documentation" element={<Navigate to="/" replace />} />
+              <Route path="/story-maps" element={<Navigate to="/" replace />} />
+              <Route path="/experience-maps" element={<Navigate to="/" replace />} />
             </Routes>
           </Layout>
         </Router>

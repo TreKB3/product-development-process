@@ -200,6 +200,7 @@ const Projects: React.FC = () => {
         }}>
           {projects.map((project) => (
               <Card 
+                key={project.id}
                 onClick={() => handleViewProject(project.id)}
                 sx={{
                   height: '100%',
