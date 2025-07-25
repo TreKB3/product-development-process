@@ -82,6 +82,14 @@ const ExperienceMapEditor: React.FC = () => {
   const itemsByPhase = useSelector((state: RootState) => 
     selectItemsByPhase(state, selectedPersona || '')
   ) as ExperienceMapItemType[];
+
+  // Debugging: Log the current state
+  useEffect(() => {
+    console.log('Personas from Redux:', personas);
+    console.log('Phases from Redux:', phases);
+    console.log('Items by phase:', itemsByPhase);
+    console.log('Selected persona:', selectedPersona);
+  }, [personas, phases, itemsByPhase, selectedPersona]);
   
   // Handle item movement (drag and drop)
   const handleMoveItem = useCallback((

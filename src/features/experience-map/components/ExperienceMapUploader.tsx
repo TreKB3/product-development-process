@@ -14,9 +14,9 @@ import {
   ListItemIcon,
   ListItemText,
   IconButton,
-  useTheme,
   Alert,
-  AlertTitle
+  AlertTitle,
+  useTheme
 } from '@mui/material';
 import { processAIAnalysis } from '../../../store/slices/experienceMapSlice';
 import { 
@@ -45,8 +45,8 @@ const ExperienceMapUploader: React.FC<ExperienceMapUploaderProps> = ({
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [error, setError] = useState<{message: string; details?: string} | null>(null);
-  const theme = useTheme();
   const dispatch = useDispatch<AppDispatch>();
+  const theme = useTheme();
   
   // Maximum file size in bytes (10MB)
   const MAX_FILE_SIZE = 10 * 1024 * 1024;
@@ -116,10 +116,15 @@ const ExperienceMapUploader: React.FC<ExperienceMapUploaderProps> = ({
 
       // Validate the result structure
       if (!result.personas || !result.phases) {
+        console.error('Invalid analysis result format:', result);
         throw new Error('Invalid analysis result format');
       }
 
-      dispatch(processAIAnalysis(result));
+      console.log('Dispatching processAIAnalysis with result:', result);
+      const action = processAIAnalysis(result);
+      console.log('Action to be dispatched:', action);
+      const dispatchResult = dispatch(action);
+      console.log('Dispatch result:', dispatchResult);
       
       // Show success message
       setError({ message: 'success' });

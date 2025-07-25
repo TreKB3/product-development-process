@@ -113,12 +113,21 @@ const experienceMapSlice = createSlice({
   reducers: {
     // ... existing reducers ...
     processAIAnalysis: (state, action: PayloadAction<DocumentAnalysisResult>) => {
+      console.log('Processing AI Analysis:', action.payload);
       const { personas, phases } = action.payload;
       
+      // Debug: Log current state before updates
+      console.log('Current personas before update:', state.personas);
+      console.log('Current phases before update:', state.phases);
+      
       // Add new personas from AI analysis
-      personas.forEach(persona => {
-        const existingPersona = state.personas.find(p => p.name.toLowerCase() === persona.name.toLowerCase());
-        if (!existingPersona) {
+      const newPersonas = personas.filter(persona => 
+        !state.personas.some(p => p.name.toLowerCase() === persona.name.toLowerCase())
+      );
+      
+      if (newPersonas.length > 0) {
+        console.log('Adding new personas:', newPersonas);
+        newPersonas.forEach(persona => {
           state.personas.push({
             id: uuidv4(),
             name: persona.name,
@@ -126,26 +135,37 @@ const experienceMapSlice = createSlice({
             goals: persona.goals || [],
             painPoints: persona.painPoints || [],
             demographics: {
-              // Default demographics that can be edited later
               techSavviness: 'medium'
             }
           });
-        }
-      });
+        });
+      } else {
+        console.log('No new personas to add');
+      }
 
       // Add new phases from AI analysis
-      phases.forEach((phase, index) => {
-        const existingPhase = state.phases.find(p => p.name.toLowerCase() === phase.name.toLowerCase());
-        if (!existingPhase) {
+      const newPhases = phases.filter(phase => 
+        !state.phases.some(p => p.name.toLowerCase() === phase.name.toLowerCase())
+      );
+      
+      if (newPhases.length > 0) {
+        console.log('Adding new phases:', newPhases);
+        newPhases.forEach((phase, index) => {
           state.phases.push({
             id: uuidv4(),
             name: phase.name,
             description: phase.description,
-            order: phase.order || index,
+            order: phase.order || state.phases.length + index,
             color: `hsl(${Math.floor(Math.random() * 360)}, 70%, 80%)`
           });
-        }
-      });
+        });
+      } else {
+        console.log('No new phases to add');
+      }
+      
+      // Debug: Log state after updates
+      console.log('State after update - personas:', state.personas);
+      console.log('State after update - phases:', state.phases);
     },
     
     // Action to generate initial experience map items based on analysis
