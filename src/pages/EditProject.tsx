@@ -17,8 +17,7 @@ import {
   fetchProjectById, 
   selectAllProjects,
   Project,
-  TeamMember,
-  ProjectStatus
+  TeamMember
 } from '../store/slices/projectSlice';
 import { AppDispatch, RootState } from '../store/store';
 
@@ -74,11 +73,14 @@ const EditProject: React.FC = () => {
 
   type FormData = Omit<Project, 'id' | 'createdAt' | 'updatedAt' | 'velocity'> & {
     successMetrics: string[];
+    teamMembers: TeamMember[];
+    businessProblem: string;
+    targetAudience: string;
     assumptions: Array<{
       id?: string;
       description: string;
       risk: 'low' | 'medium' | 'high';
-      validationStatus?: 'not-validated' | 'in-progress' | 'validated' | 'invalidated';
+      validationStatus: 'not-validated' | 'in-progress' | 'validated' | 'invalidated';
     }>;
   };
 
@@ -92,17 +94,17 @@ const EditProject: React.FC = () => {
       // Transform form data to match Project type
       const updatedProject: Project = {
         ...formData,
-        id: id!,
-        status: formData.status as ProjectStatus,
-        teamMembers: formData.teamMembers || [],
-        businessProblem: formData.businessProblem || '',
-        targetAudience: formData.targetAudience || '',
-        successMetrics: formData.successMetrics || [],
-        assumptions: (formData.assumptions || []).map(assumption => ({
+        id: id,
+        status: formData.status,
+        teamMembers: formData.teamMembers,
+        businessProblem: formData.businessProblem,
+        targetAudience: formData.targetAudience,
+        successMetrics: formData.successMetrics,
+        assumptions: formData.assumptions.map(assumption => ({
           id: assumption.id || uuidv4(),
           description: assumption.description,
           risk: assumption.risk,
-          validationStatus: assumption.validationStatus || 'not-validated'
+          validationStatus: assumption.validationStatus
         })),
         velocity: project.velocity || { android: [], ios: [], web: [] },
         createdAt: project.createdAt || new Date().toISOString(),

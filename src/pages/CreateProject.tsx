@@ -60,6 +60,14 @@ const CreateProject: React.FC = () => {
       setError(null);
       
       // In a real app, you might want to map the AI data to your project structure
+      // Map requirements to the new format if they exist
+      const requirements = Array.isArray(projectData.requirements) 
+        ? projectData.requirements.map((req: string | { id?: string; description: string }) => ({
+            id: typeof req === 'string' ? `req-${Date.now()}-${Math.random().toString(36).substr(2, 9)}` : (req.id || `req-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`),
+            description: typeof req === 'string' ? req : req.description
+          }))
+        : [];
+
       const newProject: Project = {
         id: Date.now().toString(),
         name: projectData.projectName || 'AI-Generated Project',
@@ -69,10 +77,16 @@ const CreateProject: React.FC = () => {
         endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), // 30 days from now
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
+        teamMembers: [],
+        successMetrics: [],
+        assumptions: [],
+        phases: Array.isArray(projectData.phases) ? projectData.phases : [],
+        personas: Array.isArray(projectData.personas) ? projectData.personas : [],
+        requirements,
         // Add any additional fields from AI analysis
         metadata: {
           aiGenerated: true,
-          sourceDocuments: projectData.sourceDocuments || [],
+          sourceDocuments: Array.isArray(projectData.sourceDocuments) ? projectData.sourceDocuments : [],
           analysis: {
             phases: projectData.phases,
             personas: projectData.personas,

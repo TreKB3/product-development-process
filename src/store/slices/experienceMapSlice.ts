@@ -1,5 +1,7 @@
 import { createSlice, PayloadAction, createAsyncThunk, createSelector } from '@reduxjs/toolkit';
 import { RootState } from '../store';
+import { DocumentAnalysisResult } from '../../api/ai/documentService';
+import { v4 as uuidv4 } from 'uuid';
 
 export interface ExperienceMapPersona {
   id: string;
@@ -109,6 +111,75 @@ const experienceMapSlice = createSlice({
   name: 'experienceMap',
   initialState,
   reducers: {
+    // ... existing reducers ...
+    processAIAnalysis: (state, action: PayloadAction<DocumentAnalysisResult>) => {
+      const { personas, phases } = action.payload;
+      
+      // Add new personas from AI analysis
+      personas.forEach(persona => {
+        const existingPersona = state.personas.find(p => p.name.toLowerCase() === persona.name.toLowerCase());
+        if (!existingPersona) {
+          state.personas.push({
+            id: uuidv4(),
+            name: persona.name,
+            description: persona.description,
+            goals: persona.goals || [],
+            painPoints: persona.painPoints || [],
+            demographics: {
+              // Default demographics that can be edited later
+              techSavviness: 'medium'
+            }
+          });
+        }
+      });
+
+      // Add new phases from AI analysis
+      phases.forEach((phase, index) => {
+        const existingPhase = state.phases.find(p => p.name.toLowerCase() === phase.name.toLowerCase());
+        if (!existingPhase) {
+          state.phases.push({
+            id: uuidv4(),
+            name: phase.name,
+            description: phase.description,
+            order: phase.order || index,
+            color: `hsl(${Math.floor(Math.random() * 360)}, 70%, 80%)`
+          });
+        }
+      });
+    },
+    
+    // Action to generate initial experience map items based on analysis
+    generateInitialExperienceMap: (state, action: PayloadAction<{
+      personaId: string;
+      phaseId: string;
+      title: string;
+      description: string;
+      emotion: ExperienceMapItem['emotion'];
+    }>) => {
+      const { personaId, phaseId, title, description, emotion } = action.payload;
+      
+      // Check if an item already exists for this persona and phase
+      const existingItem = state.items.find(
+        item => item.personaId === personaId && item.phaseId === phaseId
+      );
+      
+      if (!existingItem) {
+        const newItem: ExperienceMapItem = {
+          id: uuidv4(),
+          phaseId,
+          personaId,
+          title,
+          description,
+          emotion,
+          order: state.items.filter(item => item.phaseId === phaseId).length,
+          opportunities: [],
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        };
+        
+        state.items.push(newItem);
+      }
+    },
     setLoading: (state, action: PayloadAction<boolean>) => {
       state.loading = action.payload;
     },
@@ -257,6 +328,7 @@ export const {
   updateItem,
   deleteItem,
   reorderItems,
+  processAIAnalysis,
 } = experienceMapSlice.actions;
 
 export default experienceMapSlice.reducer;

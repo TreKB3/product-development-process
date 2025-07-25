@@ -4,7 +4,10 @@ const multer = require('multer');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
+const fsp = require('fs').promises;
 const { OpenAI } = require('openai');
+const pdf = require('pdf-parse');
+const fileType = require('file-type');
 
 // Initialize Express app first
 const app = express();
@@ -99,53 +102,75 @@ const handleUpload = (req, res, next) => {
   });
 };
 
+// Helper function to extract text from PDF
+async function extractTextFromPdf(filePath) {
+  try {
+    const dataBuffer = await fsp.readFile(filePath);
+    const data = await pdf(dataBuffer);
+    return data.text;
+  } catch (error) {
+    console.error('Error extracting text from PDF:', error);
+    throw new Error('Failed to extract text from PDF');
+  }
+}
+
+// Helper function to split text into chunks
+function chunkText(text, maxChunkSize = 4000) {
+  const chunks = [];
+  let currentChunk = '';
+  const sentences = text.split(/(?<=[.!?]\s)/);
+  
+  for (const sentence of sentences) {
+    if ((currentChunk + sentence).length > maxChunkSize && currentChunk.length > 0) {
+      chunks.push(currentChunk.trim());
+      currentChunk = sentence;
+    } else {
+      currentChunk += sentence;
+    }
+  }
+  
+  if (currentChunk.length > 0) {
+    chunks.push(currentChunk.trim());
+  }
+  
+  return chunks;
+}
+
 // Initialize OpenAI client with real API key or mock if not available
 let openai;
 const useMock = !process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY.startsWith('your_openai_api_key_here');
 
 if (useMock) {
-  console.log('⚠️  Running in MOCK MODE - Using simulated responses');
-  console.log('⚠️  Running in MOCK MODE - Using simulated responses');
+  console.log('⚠️  Using mock implementation (no API key provided)');
   openai = {
     chat: {
       completions: {
         create: async () => {
-          // Simulate API delay
-          await new Promise(resolve => setTimeout(resolve, 2000));
-          
-          // Return mock response
           return {
             choices: [{
               message: {
                 content: JSON.stringify({
-                  projectName: "Sample Project",
-                  description: "This is a mock project generated for testing purposes.",
+                  projectName: 'Mock Project',
+                  description: 'This is a mock project generated for testing purposes.',
                   phases: [
-                    { name: "Discovery", description: "Initial research and planning phase" },
-                    { name: "Design", description: "UI/UX and system architecture design" },
-                    { name: "Development", description: "Implementation of features" },
-                    { name: "Testing", description: "Quality assurance and bug fixing" },
-                    { name: "Deployment", description: "Release to production" }
+                    { name: 'Phase 1', description: 'Initial setup and planning' },
+                    { name: 'Phase 2', description: 'Development and implementation' },
+                    { name: 'Phase 3', description: 'Testing and deployment' }
                   ],
                   personas: [
                     {
-                      name: "Project Manager",
-                      description: "Oversees project execution and team coordination",
-                      goals: ["Deliver on time", "Maintain team productivity"],
-                      painPoints: ["Scope creep", "Communication gaps"]
-                    },
-                    {
-                      name: "End User",
-                      description: "Primary user of the application",
-                      goals: ["Ease of use", "Reliable performance"],
-                      painPoints: ["Complex interfaces", "Slow response times"]
+                      name: 'End User',
+                      description: 'Primary user of the application',
+                      goals: ['Ease of use', 'Efficiency', 'Reliability'],
+                      painPoints: ['Complex interfaces', 'Slow performance', 'Bugs and errors']
                     }
                   ],
                   requirements: [
-                    "User authentication system",
-                    "Responsive design for all devices",
-                    "Data export functionality",
-                    "Role-based access control"
+                    'User authentication system',
+                    'Responsive design for all devices',
+                    'Data visualization capabilities',
+                    'Export functionality',
+                    'User settings and preferences'
                   ]
                 }, null, 2)
               }
@@ -158,36 +183,12 @@ if (useMock) {
 } else {
   try {
     openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
+      apiKey: process.env.OPENAI_API_KEY
     });
     console.log('🔑  Using OpenAI API with provided key');
   } catch (error) {
-    console.error('❌  Failed to initialize OpenAI client:', error.message);
-    console.log('⚠️  Falling back to MOCK MODE');
-    // Fall back to mock mode if initialization fails
-    openai = {
-      chat: {
-        completions: {
-          create: async () => {
-            // Simulate API delay
-            await new Promise(resolve => setTimeout(resolve, 2000));
-            return {
-              choices: [{
-                message: {
-                  content: JSON.stringify({
-                    projectName: "Sample Project (Mock Fallback)",
-                    description: "This is a fallback mock response due to OpenAI initialization error.",
-                    phases: [{ name: "Phase 1", description: "Initial phase" }],
-                    personas: [],
-                    requirements: []
-                  }, null, 2)
-                }
-              }]
-            };
-          }
-        }
-      }
-    };
+    console.error('❌  Error initializing OpenAI client:', error);
+    process.exit(1);
   }
 }
 
@@ -233,22 +234,50 @@ app.post('/api/process-documents', (req, res, next) => {
     console.log('No request body or empty body');
   }
   
-  // Handle the upload with multer
+  // Handle the upload with multer - support both 'files' and 'documents' field names
   console.log('\n=== Multer upload starting ===');
-  upload.array('files')(req, res, function(err) {
+  const uploadHandler = (req, res, next) => {
+    // First try 'files' field
+    const uploadMiddleware = upload.array('files');
+    
+    uploadMiddleware(req, res, function(err) {
+      if (err) {
+        // If 'files' field fails, try 'documents' field
+        if (err.code === 'LIMIT_UNEXPECTED_FILE' && err.field === 'files') {
+          console.log('No files in "files" field, trying "documents" field');
+          const docsUpload = upload.array('documents');
+          return docsUpload(req, res, function(docsErr) {
+            if (docsErr) {
+              handleUploadError(docsErr, res);
+            } else {
+              next();
+            }
+          });
+        }
+        handleUploadError(err, res);
+      } else {
+        next();
+      }
+    });
+  };
+  
+  // Helper function to handle upload errors
+  const handleUploadError = (err, res) => {
     if (err instanceof multer.MulterError) {
-      // A Multer error occurred when uploading
       console.error('Multer error:', err);
       return res.status(400).json({ error: 'File upload error', details: err.message });
     } else if (err) {
-      // An unknown error occurred
       console.error('Unknown upload error:', err);
       return res.status(500).json({ error: 'Internal server error', details: err.message });
     }
-    // If we got here, the upload was successful
-    next();
-  });
-}, async (req, res) => {
+  };
+  
+  // Execute the upload handler
+  uploadHandler(req, res, next);
+});
+
+// Add the document processing endpoint
+app.post('/process-documents', upload.array('documents'), async (req, res) => {
   console.log('\n=== New File Upload Request ===');
   console.log('Method:', req.method);
   console.log('URL:', req.originalUrl);
@@ -258,6 +287,7 @@ app.post('/api/process-documents', (req, res, next) => {
     console.error('File validation error:', req.fileValidationError);
     return res.status(400).json({ error: req.fileValidationError });
   }
+  
   try {
     console.log('Uploaded files:', req.files);
     
@@ -270,93 +300,263 @@ app.post('/api/process-documents', (req, res, next) => {
     const results = await Promise.all(
       req.files.map(async (file) => {
         try {
-          // Read the file content
-          const fileContent = fs.readFileSync(file.path, 'utf-8');
+          let fileContent = '';
+          const fileExt = path.extname(file.originalname).toLowerCase();
           
-          // Process with OpenAI
-          const completion = await openai.chat.completions.create({
-            model: 'gpt-4',
-            messages: [
-              {
-                role: 'system',
-                content: 'You are an AI assistant that helps analyze project documents and extract key information.',
-              },
-              {
-                role: 'user',
-                content: `Analyze the following document and extract key project information:
-                \n${fileContent}\n\nReturn the information in JSON format with the following structure:
-                {
-                  "projectName": "string",
-                  "description": "string",
-                  "phases": [
-                    { "name": "string", "description": "string" }
-                  ],
-                  "personas": [
-                    { 
-                      "name": "string", 
-                      "description": "string",
-                      "goals": ["string"],
-                      "painPoints": ["string"] 
-                    }
-                  ],
-                  "requirements": ["string"]
-                }`,
-              },
-            ],
-            temperature: 0.7,
-          });
-
-          // Clean up the uploaded file
-          fs.unlinkSync(file.path);
-
-          // Parse the AI response
-          const content = completion.choices[0]?.message?.content;
-          if (!content) {
-            throw new Error('No content in AI response');
+          // Handle different file types
+          if (fileExt === '.pdf') {
+            console.log(`Processing PDF file: ${file.originalname}`);
+            fileContent = await extractTextFromPdf(file.path);
+          } else if (['.txt', '.md', '.markdown'].includes(fileExt)) {
+            console.log(`Processing text file: ${file.originalname}`);
+            fileContent = await fsp.readFile(file.path, 'utf-8');
+          } else {
+            throw new Error(`Unsupported file type: ${fileExt}. Please upload a PDF or text file.`);
           }
-
-          return JSON.parse(content);
+          
+          // Clean up the uploaded file regardless of success/failure
+          await fsp.unlink(file.path);
+          
+          console.log(`Extracted ${fileContent.length} characters from ${file.originalname}`);
+          
+          // Check if the content is too large and needs chunking
+          const estimatedTokens = Math.ceil(fileContent.length / 4);
+          const maxTokens = 7000; // Conservative buffer for the prompt
+          
+          if (estimatedTokens > maxTokens) {
+            console.log(`Document is large (${estimatedTokens} tokens), splitting into chunks...`);
+            const chunks = chunkText(fileContent, 3000); // Smaller chunks for better processing
+            console.log(`Split document into ${chunks.length} chunks`);
+            
+            // Process each chunk and combine results
+            const chunkResults = [];
+            
+            for (let i = 0; i < chunks.length; i++) {
+              const chunk = chunks[i];
+              console.log(`Processing chunk ${i + 1}/${chunks.length} (${chunk.length} chars)`);
+              
+              const result = await processDocumentChunk(
+                chunk, 
+                i === 0, // First chunk gets full processing
+                i > 0    // Subsequent chunks only add new information
+              );
+              
+              if (result) {
+                chunkResults.push(result);
+              }
+            }
+            
+            // Combine results from all chunks
+            return combineChunkResults(chunkResults);
+          } else {
+            // Process as a single chunk
+            return await processDocumentChunk(fileContent, true, false);
+          }
+          
         } catch (error) {
+          // Clean up the uploaded file in case of error
+          if (fs.existsSync(file.path)) {
+            await fsp.unlink(file.path).catch(console.error);
+          }
+          
           console.error(`Error processing file ${file.originalname}:`, error);
           return {
-            error: `Error processing ${file.originalname}`,
-            details: error.message,
+            projectName: '',
+            description: `Error: ${error.message}`,
+            phases: [],
+            personas: [],
+            requirements: []
           };
         }
       })
     );
-
+    
     // Combine results from all files
-    const combinedResult = results.reduce(
-      (acc, result) => {
-        if (result.error) {
-          acc.errors = acc.errors || [];
-          acc.errors.push(result);
-        } else {
-          // Merge project details
-          acc.projectName = result.projectName || acc.projectName;
-          acc.description = result.description || acc.description;
-          
-          // Merge phases, personas, and requirements
-          if (result.phases) acc.phases = [...(acc.phases || []), ...result.phases];
-          if (result.personas) acc.personas = [...(acc.personas || []), ...result.personas];
-          if (result.requirements) acc.requirements = [...(acc.requirements || []), ...result.requirements];
-        }
-        return acc;
-      },
-      { projectName: '', description: '', phases: [], personas: [], requirements: [] }
-    );
-
+    const combinedResult = combineChunkResults(results);
+    
+    // Send the combined result
     res.json(combinedResult);
+    
   } catch (error) {
     console.error('Error processing documents:', error);
-    res.status(500).json({
+    res.status(500).json({ 
       error: 'Failed to process documents',
-      details: error.message,
+      details: error.message 
     });
   }
 });
 
+// Process a single document chunk with OpenAI
+async function processDocumentChunk(content, isFirstChunk, isContinuation) {
+  const prompt = isFirstChunk 
+    ? `Analyze the following document and extract key project information.
+       Be concise and focus on the most important details.
+       
+       Document content:
+       ${content}
+       
+       Return the information in JSON format with the following structure:
+       {
+         "projectName": "string (brief project name)",
+         "description": "string (1-2 paragraph summary)",
+         "phases": [
+           { 
+             "name": "string (phase name)", 
+             "description": "string (1-2 sentences)" 
+           }
+         ],
+         "personas": [
+           { 
+             "name": "string (persona name)", 
+             "description": "string (1-2 sentences)",
+             "goals": ["string (bullet points)"],
+             "painPoints": ["string (bullet points)"] 
+           }
+         ],
+         "requirements": ["string (key requirements, one per item)"]
+       }
+       
+       Important: Only return valid JSON. Do not include any other text.`
+    : `The following is another section of the same document. Extract any additional information that should be added to the project analysis.
+       
+       Additional content:
+       ${content}
+       
+       Return only a JSON object with any new or updated information in the same format as before.`;
+
+  try {
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4',
+      messages: [
+        {
+          role: 'system',
+          content: 'You are an AI assistant that helps analyze project documents and extract key information. ' +
+                   'Focus on extracting the most important information and be concise in your responses.'
+        },
+        { role: 'user', content: prompt }
+      ],
+      temperature: 0.7,
+      max_tokens: 2000,
+    });
+    
+    const content = completion.choices[0]?.message?.content;
+    if (!content) {
+      throw new Error('No content in AI response');
+    }
+    
+    // Extract JSON from the response
+    let jsonContent = content.trim();
+    const jsonMatch = content.match(/```(?:json)?\n([\s\S]*?)\n```/);
+    if (jsonMatch && jsonMatch[1]) {
+      jsonContent = jsonMatch[1];
+    }
+    
+    // Clean up the content
+    jsonContent = jsonContent
+      .replace(/^```json\n?|```$/g, '')
+      .replace(/^\s*[\r\n]+|\s*[\r\n]+$/g, '')
+      .replace(/^[^{]*([\s\S]*\})[^}]*$/, '$1');
+    
+    console.log('Parsed JSON content from chunk');
+    return JSON.parse(jsonContent);
+    
+  } catch (error) {
+    console.error('Error processing document chunk:', error);
+    throw error;
+  }
+}
+
+// Combine results from multiple chunks
+function combineChunkResults(chunkResults) {
+  if (!chunkResults || chunkResults.length === 0) {
+    return {
+      projectName: '',
+      description: '',
+      phases: [],
+      personas: [],
+      requirements: []
+    };
+  }
+  
+  // Start with the first result
+  const combined = { ...chunkResults[0] };
+  
+  // Merge additional results
+  for (let i = 1; i < chunkResults.length; i++) {
+    const result = chunkResults[i];
+    
+    // Update project name if not set
+    if (!combined.projectName && result.projectName) {
+      combined.projectName = result.projectName;
+    }
+    
+    // Append descriptions
+    if (result.description) {
+      if (!combined.description) {
+        combined.description = result.description;
+      } else if (!combined.description.includes(result.description)) {
+        combined.description += '\n\n' + result.description;
+      }
+    }
+    
+    // Merge phases
+    if (result.phases && result.phases.length > 0) {
+      const existingPhases = new Set(combined.phases.map(p => p.name.toLowerCase()));
+      for (const phase of result.phases) {
+        if (!existingPhases.has(phase.name.toLowerCase())) {
+          combined.phases.push(phase);
+          existingPhases.add(phase.name.toLowerCase());
+        }
+      }
+    }
+    
+    // Merge personas
+    if (result.personas && result.personas.length > 0) {
+      const existingPersonas = new Map(combined.personas.map(p => [p.name.toLowerCase(), p]));
+      for (const persona of result.personas) {
+        const key = persona.name.toLowerCase();
+        if (existingPersonas.has(key)) {
+          // Merge with existing persona
+          const existing = existingPersonas.get(key);
+          existing.description = existing.description || persona.description;
+          
+          // Merge goals
+          if (persona.goals) {
+            const goalSet = new Set([
+              ...(existing.goals || []).map(g => g.toLowerCase()),
+              ...(persona.goals || []).map(g => g.toLowerCase())
+            ]);
+            existing.goals = Array.from(goalSet);
+          }
+          
+          // Merge pain points
+          if (persona.painPoints) {
+            const painPointSet = new Set([
+              ...(existing.painPoints || []).map(p => p.toLowerCase()),
+              ...(persona.painPoints || []).map(p => p.toLowerCase())
+            ]);
+            existing.painPoints = Array.from(painPointSet);
+          }
+        } else {
+          // Add new persona
+          combined.personas.push({ ...persona });
+          existingPersonas.set(key, persona);
+        }
+      }
+    }
+    
+    // Merge requirements
+    if (result.requirements && result.requirements.length > 0) {
+      const reqSet = new Set([
+        ...(combined.requirements || []).map(r => r.toLowerCase()),
+        ...(result.requirements || []).map(r => r.toLowerCase())
+      ]);
+      combined.requirements = Array.from(reqSet);
+    }
+  }
+  
+  return combined;
+}
 // Error handling middleware with detailed logging
 app.use((err, req, res, next) => {
   console.error('\n=== ERROR ===');

@@ -185,7 +185,12 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
           },
         }}
       >
-        <input {...getInputProps()} />
+        <input 
+          {...getInputProps()} 
+          id="document-upload-input"
+          name="document-upload"
+          data-testid="document-upload-input"
+        />
         <Box
           sx={{
             display: 'flex',

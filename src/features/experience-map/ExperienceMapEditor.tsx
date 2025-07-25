@@ -1,4 +1,5 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import * as React from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { AppDispatch, RootState } from '../../store/store';

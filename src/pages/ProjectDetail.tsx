@@ -3,24 +3,24 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import {
   Box,
-  Typography,
-  Paper,
-  Tabs,
-  Tab,
+  Button,
   Card,
   CardContent,
-  Button,
+  Chip,
   CircularProgress,
+  Container,
+  Divider,
+  Grid,
   List,
   ListItem,
   ListItemText,
-  ListItemIcon,
-  Divider,
-  Chip,
-  useTheme,
-  alpha,
+  Paper,
   Stack,
-  Grid
+  Tab,
+  Tabs,
+  Typography,
+  alpha,
+  useTheme,
 } from '@mui/material';
 import {
   Description as DescriptionIcon,
@@ -191,19 +191,26 @@ const ProjectDetail: React.FC = () => {
                     Team Members
                   </Typography>
                   {currentProject.teamMembers && currentProject.teamMembers.length > 0 ? (
-                    <ul style={{ paddingLeft: '20px' }}>
+                    <List disablePadding>
                       {currentProject.teamMembers.map((member) => (
-                        <li key={member.id}>
-                          <Typography>
-                            <strong>{member.name}</strong> - {member.role}
-                            <br />
-                            <Typography variant="body2" color="text.secondary">
-                              {member.email}
-                            </Typography>
-                          </Typography>
-                        </li>
+                        <ListItem key={member.id} disableGutters disablePadding>
+                          <ListItemText
+                            primary={
+                              <React.Fragment>
+                                <Typography component="span" sx={{ display: 'block' }}>
+                                  <strong>{member.name}</strong> - {member.role}
+                                </Typography>
+                              </React.Fragment>
+                            }
+                            secondary={
+                              <Typography variant="body2" color="text.secondary">
+                                {member.email}
+                              </Typography>
+                            }
+                          />
+                        </ListItem>
                       ))}
-                    </ul>
+                    </List>
                   ) : (
                     <Typography>No team members assigned.</Typography>
                   )}

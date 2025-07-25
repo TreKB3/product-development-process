@@ -58,8 +58,12 @@ export const analyzeDocuments = async (
       signal,
     };
 
+    // Use the full backend URL with port 5001
+    const backendUrl = 'http://localhost:5001/process-documents';
+    console.log('Sending request to:', backendUrl);
+    
     const response: AxiosResponse<DocumentAnalysisResult> = await axios.post(
-      '/api/process-documents',
+      backendUrl,
       formData,
       config
     );
