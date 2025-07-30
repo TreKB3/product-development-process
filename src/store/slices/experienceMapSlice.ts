@@ -9,6 +9,7 @@ export interface ExperienceMapPersona {
   description: string;
   goals: string[];
   painPoints: string[];
+  phaseIds: string[]; // Array of phase IDs associated with this persona
   demographics: {
     age?: string;
     occupation?: string;
@@ -22,6 +23,8 @@ export interface ExperienceMapPhase {
   description: string;
   order: number;
   color?: string;
+  items: ExperienceMapItem[]; // Items within this phase
+  personaId?: string; // Optional reference to persona this phase belongs to
 }
 
 export interface ExperienceMapItem {
@@ -59,6 +62,7 @@ const initialState: ExperienceMapState = {
       description: 'Main target user for this experience',
       goals: ['Complete tasks efficiently', 'Have a seamless experience'],
       painPoints: ['Frustration with complex interfaces', 'Time constraints'],
+      phaseIds: ['phase-1', 'phase-2', 'phase-3', 'phase-4', 'phase-5'],
       demographics: {
         age: '25-40',
         techSavviness: 'high'
@@ -66,11 +70,11 @@ const initialState: ExperienceMapState = {
     }
   ],
   phases: [
-    { id: 'phase-1', name: 'Discovery', description: 'Initial awareness and research', order: 1, color: '#4e79a7' },
-    { id: 'phase-2', name: 'Consideration', description: 'Evaluation of options', order: 2, color: '#f28e2b' },
-    { id: 'phase-3', name: 'Acquisition', description: 'Purchase or signup', order: 3, color: '#e15759' },
-    { id: 'phase-4', name: 'Onboarding', description: 'First-time setup', order: 4, color: '#76b7b2' },
-    { id: 'phase-5', name: 'Retention', description: 'Ongoing usage', order: 5, color: '#59a14f' },
+    { id: 'phase-1', name: 'Discovery', description: 'Initial awareness and research', order: 1, color: '#4e79a7', items: [], personaId: 'persona-1' },
+    { id: 'phase-2', name: 'Consideration', description: 'Evaluation of options', order: 2, color: '#f28e2b', items: [], personaId: 'persona-1' },
+    { id: 'phase-3', name: 'Acquisition', description: 'Purchase or signup', order: 3, color: '#e15759', items: [], personaId: 'persona-1' },
+    { id: 'phase-4', name: 'Onboarding', description: 'First-time setup', order: 4, color: '#76b7b2', items: [], personaId: 'persona-1' },
+    { id: 'phase-5', name: 'Retention', description: 'Ongoing usage', order: 5, color: '#59a14f', items: [], personaId: 'persona-1' },
   ],
   items: [],
   currentMapId: null,
@@ -214,33 +218,50 @@ const experienceMapSlice = createSlice({
     setCurrentMap: (state, action: PayloadAction<string | null>) => {
       state.currentMapId = action.payload;
     },
-    addPersona: (state, action: PayloadAction<Omit<ExperienceMapPersona, 'id' | 'goals' | 'painPoints' | 'demographics'>>) => {
+    addPersona: (state, action: PayloadAction<Omit<ExperienceMapPersona, 'id' | 'goals' | 'painPoints' | 'demographics' | 'phaseIds'>>) => {
       const newPersona: ExperienceMapPersona = {
-        ...action.payload,
-        id: `persona-${Date.now()}`,
+        id: uuidv4(),
         goals: [],
         painPoints: [],
-        demographics: {}
+        demographics: {},
+        phaseIds: [],
+        ...action.payload
       };
       state.personas.push(newPersona);
     },
-    updatePersona: (state, action: PayloadAction<{id: string} & Partial<ExperienceMapPersona>>) => {
+    updatePersona(state, action: PayloadAction<{id: string} & Partial<ExperienceMapPersona>>) {
       const index = state.personas.findIndex(p => p.id === action.payload.id);
       if (index !== -1) {
-        state.personas[index] = { ...state.personas[index], ...action.payload };
+        state.personas[index] = { 
+          ...state.personas[index], 
+          ...action.payload,
+          phaseIds: action.payload.phaseIds ?? state.personas[index].phaseIds
+        };
       }
     },
-    addPhase: (state, action: PayloadAction<Omit<ExperienceMapPhase, 'id'>>) => {
+    updatePersonas(state, action: PayloadAction<ExperienceMapPersona[]>) {
+      state.personas = action.payload;
+    },
+    updatePhases(state, action: PayloadAction<ExperienceMapPhase[]>) {
+      state.phases = action.payload;
+    },
+    addPhase: (state, action: PayloadAction<Omit<ExperienceMapPhase, 'id' | 'items'>>) => {
       const newPhase: ExperienceMapPhase = {
-        ...action.payload,
-        id: `phase-${Date.now()}`,
+        id: uuidv4(),
+        items: [],
+        ...action.payload
       };
       state.phases.push(newPhase);
     },
-    updatePhase: (state, action: PayloadAction<{id: string} & Partial<ExperienceMapPhase>>) => {
+    updatePhase(state, action: PayloadAction<{id: string} & Partial<ExperienceMapPhase>>) {
       const index = state.phases.findIndex(p => p.id === action.payload.id);
       if (index !== -1) {
-        state.phases[index] = { ...state.phases[index], ...action.payload };
+        state.phases[index] = { 
+          ...state.phases[index], 
+          ...action.payload,
+          items: action.payload.items ?? state.phases[index].items,
+          personaId: action.payload.personaId ?? state.phases[index].personaId
+        };
       }
     },
     addItem: (state, action: PayloadAction<Omit<ExperienceMapItem, 'id' | 'createdAt' | 'updatedAt' | 'evidence' | 'opportunities'>>) => {
@@ -309,7 +330,12 @@ const experienceMapSlice = createSlice({
                   description: persona.description || `Persona: ${persona.name}`,
                   goals: Array.isArray(persona.goals) ? persona.goals : [],
                   painPoints: Array.isArray(persona.painPoints) ? persona.painPoints : [],
-                  demographics: { techSavviness: 'medium' as const }
+                  phaseIds: [], // Initialize with empty phaseIds array
+                  demographics: { 
+                    techSavviness: 'medium' as const,
+                    age: persona.demographics?.age,
+                    occupation: persona.demographics?.occupation
+                  }
                 });
               }
             });
@@ -324,7 +350,9 @@ const experienceMapSlice = createSlice({
                   name: phase.name,
                   description: phase.description || `Phase: ${phase.name}`,
                   order: typeof phase.order === 'number' ? phase.order : state.phases.length + index,
-                  color: phase.color || `hsl(${Math.floor(Math.random() * 360)}, 70%, 80%)`
+                  color: phase.color || `hsl(${Math.floor(Math.random() * 360)}, 70%, 80%)`,
+                  items: [], // Initialize with empty items array
+                  personaId: undefined // Will be set when added to a persona
                 });
               }
             });
@@ -396,12 +424,13 @@ export const {
   setCurrentMap,
   addPersona,
   updatePersona,
-  addPhase,
+  updatePersonas,
   updatePhase,
+  updatePhases,
   addItem,
   updateItem,
   deleteItem,
-  reorderItems
+  reorderItems,
 } = experienceMapSlice.actions;
 
 export default experienceMapSlice.reducer;

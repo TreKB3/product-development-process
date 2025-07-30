@@ -40,23 +40,31 @@ import {
   Delete as DeleteIcon,
   DragIndicator as DragHandleIcon
 } from '@mui/icons-material';
-import { DndProvider } from 'react-dnd';
+import { useDrop, useDrag, useDragLayer } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
+import { DndProvider } from 'react-dnd';
+import { v4 as uuidv4 } from 'uuid';
+import { animated, useSpring } from '@react-spring/web';
+import { CSS } from '@dnd-kit/utilities';
 import { 
   fetchExperienceMap, 
   selectPhases, 
   selectPersonas, 
   selectItemsByPhase,
+  updatePhase,
+  updatePersona,
   ExperienceMapPhase,
   ExperienceMapItem as ExperienceMapItemType,
   ExperienceMapPersona,
-  updateItem
+  updateItem,
+  updatePhases,
+  updatePersonas
 } from '../../store/slices/experienceMapSlice';
 
 // Components
 import { ExperienceMapItem } from './components/ExperienceMapItem';
-import { PersonaDialog } from './components/PersonaDialog';
-import { PhaseDialog } from './components/PhaseDialog';
+import PhaseDialog from './components/PhaseDialog';
+import PersonaDialog from './components/PersonaDialog';
 
 // Types
 interface PhaseColumnProps {
@@ -69,7 +77,115 @@ interface PhaseColumnProps {
   moveItem: (dragIndex: number, hoverIndex: number, dragPhaseId: string, hoverPhaseId: string) => void;
 }
 
-const ExperienceMapEditor: React.FC = () => {
+const CustomDragLayer = () => {
+  const { itemType, isDragging, item, currentOffset } = useDragLayer((monitor) => ({
+    item: monitor.getItem(),
+    itemType: monitor.getItemType(),
+    isDragging: monitor.isDragging(),
+    currentOffset: monitor.getClientOffset(),
+  }));
+
+  if (!isDragging || !currentOffset) {
+    return null;
+  }
+
+  const transform = `translate(${currentOffset.x}px, ${currentOffset.y}px)`;
+
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        pointerEvents: 'none',
+        zIndex: 1000,
+        left: 0,
+        top: 0,
+        width: '100%',
+        height: '100%',
+      }}
+    >
+      <div
+        style={{
+          transform,
+          opacity: 0.9,
+          backgroundColor: 'white',
+          padding: '8px 16px',
+          borderRadius: '4px',
+          boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+          border: '1px solid #ccc',
+          width: '200px',
+        }}
+      >
+        {item?.phase?.name}
+      </div>
+    </div>
+  );
+};
+
+const DraggablePhaseCard: React.FC<{
+  phase: ExperienceMapPhase;
+  index: number;
+  personaId: string;
+  onDuplicate: (phase: ExperienceMapPhase) => void;
+  onDelete: (phaseId: string) => void;
+  movePhase: (dragIndex: number, hoverIndex: number, dragPersonaId: string, hoverPersonaId: string) => void;
+}> = ({ phase, index, personaId, onDuplicate, onDelete, movePhase }) => {
+  const [{ isDragging }, dragRef] = useDrag({
+    type: 'PHASE',
+    item: { type: 'PHASE', id: phase.id, index, personaId, phase },
+    collect: (monitor) => ({
+      isDragging: monitor.isDragging(),
+    }),
+  });
+
+  const [{ isOver, canDrop }, dropRef] = useDrop({
+    accept: 'PHASE',
+    hover: (item: { id: string; index: number; personaId: string }, monitor) => {
+      if (!monitor.isOver({ shallow: true })) return;
+      
+      const dragIndex = item.index;
+      const hoverIndex = index;
+      const dragPersonaId = item.personaId;
+      const hoverPersonaId = personaId;
+
+      // Don't replace items with themselves
+      if (dragIndex === hoverIndex && dragPersonaId === hoverPersonaId) {
+        return;
+      }
+
+      // Time to actually perform the action
+      movePhase(dragIndex, hoverIndex, dragPersonaId, hoverPersonaId);
+
+      // Note: we're mutating the monitor item here!
+      // Generally it's better to avoid mutations,
+      // but it's good here for the sake of performance
+      // to avoid expensive index searches.
+      item.index = hoverIndex;
+      item.personaId = hoverPersonaId;
+    },
+    collect: (monitor) => ({
+      isOver: monitor.isOver({ shallow: true }),
+      canDrop: monitor.canDrop(),
+    }),
+  });
+
+  // Animation for drag state
+  const [{ scale }, set] = useSpring(() => ({
+    scale: 1,
+    config: { tension: 300, friction: 20 },
+  }));
+
+  // Update animation when drag state changes
+  React.useEffect(() => {
+    if (isOver) {
+      set({ scale: 1.03 });
+    } else {
+      set({ scale: 1 });
+    }
+  }, [isOver, set]);
+
+  const opacity = isDragging ? 0.5 : 1;
+  const borderColor = isOver ? '#4caf50' : 'transparent';
+  const backgroundColor = isOver ? 'rgba(76, 175, 80, 0.1)' : 'transparent';
   const { projectId } = useParams<{ projectId: string }>();
   const dispatch = useDispatch<AppDispatch>();
   const theme = useTheme();
@@ -135,69 +251,136 @@ const ExperienceMapEditor: React.FC = () => {
     dragPhaseId: string,
     hoverPhaseId: string
   ) => {
-    if (!selectedPersona) return;
-    
-    // Get the item being dragged
-    const dragItems = itemsByPhase.get(dragPhaseId) || [];
-    const dragItem = dragItems[dragIndex];
-    
-    if (!dragItem) return;
-    
-    // Dispatch action to update the item's phase and order
-    dispatch(updateItem({
-      id: dragItem.id,
-      phaseId: hoverPhaseId,
-      order: hoverIndex,
-      updatedAt: new Date().toISOString()
-    }));
-    
-    // Update the order of other items in the source and target phases
-    const updatedDragItems = [...dragItems];
-    updatedDragItems.splice(dragIndex, 1);
-    
-    const hoverItems = [...(itemsByPhase.get(hoverPhaseId) || [])];
-    hoverItems.splice(hoverIndex, 0, dragItem);
-    
-    // Update the local state for a smoother UI update
-    itemsByPhase.set(dragPhaseId, updatedDragItems);
-    itemsByPhase.set(hoverPhaseId, hoverItems);
-  }, [dispatch, selectedPersona, itemsByPhase]);
+    if (dragPhaseId === hoverPhaseId) {
+      // Reorder within the same phase
+      const newPhases = phases.map((phase) => {
+        if (phase.id === dragPhaseId) {
+          const newItems = [...phase.items];
+          const [removed] = newItems.splice(dragIndex, 1);
+          newItems.splice(hoverIndex, 0, removed);
+          return { ...phase, items: newItems };
+        }
+        return phase;
+      });
+      dispatch(updatePhases(newPhases));
+    } else {
+      // Move between phases
+      const sourcePhase = phases.find((p) => p.id === dragPhaseId);
+      const targetPhase = phases.find((p) => p.id === hoverPhaseId);
+      
+      if (sourcePhase && targetPhase) {
+        const newSourceItems = [...sourcePhase.items];
+        const [movedItem] = newSourceItems.splice(dragIndex, 1);
+        
+        const newTargetItems = [...targetPhase.items];
+        newTargetItems.splice(hoverIndex, 0, movedItem);
+        
+        const newPhases = phases.map((phase) => {
+          if (phase.id === dragPhaseId) {
+            return { ...phase, items: newSourceItems };
+          }
+          if (phase.id === hoverPhaseId) {
+            return { ...phase, items: newTargetItems };
+          }
+          return phase;
+        });
+        
+        dispatch(updatePhases(newPhases));
+      }
+    }
+  },
+  [phases, dispatch]
+);
 
-  // Styled components for the unified view
-  const StyledGrid = styled(Grid)(({ theme }) => ({
-    '& .phase-header': {
-      backgroundColor: theme.palette.grey[100],
-      padding: theme.spacing(1, 2),
-      borderBottom: `1px solid ${theme.palette.divider}`,
-      position: 'sticky',
-      top: 0,
-      zIndex: 2,
+  // Move phase within or between personas
+  const movePhase = useCallback(
+    (dragIndex: number, hoverIndex: number, dragPersonaId: string, hoverPersonaId: string) => {
+      const dragPersona = personas.find(p => p.id === dragPersonaId);
+      const hoverPersona = personas.find(p => p.id === hoverPersonaId);
+      
+      if (!dragPersona || !hoverPersona) return;
+      
+      // Get the phase being dragged
+      const phaseIdToMove = dragPersona.phaseIds[dragIndex];
+      if (!phaseIdToMove) return;
+      
+      // Create new phase IDs array for drag persona
+      const newDragPhaseIds = [...dragPersona.phaseIds];
+      newDragPhaseIds.splice(dragIndex, 1);
+      
+      // Create new phase IDs array for hover persona
+      const newHoverPhaseIds = [...hoverPersona.phaseIds];
+      newHoverPhaseIds.splice(hoverIndex, 0, phaseIdToMove);
+      
+      // Update the phase's persona reference if moving between personas
+      if (dragPersonaId !== hoverPersonaId) {
+        const phaseToUpdate = phases.find(p => p.id === phaseIdToMove);
+        if (phaseToUpdate) {
+          dispatch(updatePhase({
+            id: phaseIdToMove,
+            personaId: hoverPersonaId
+          }));
+        }
+      }
+      
+      // Update the personas with new phase orders
+      dispatch(updatePersona({
+        id: dragPersonaId,
+        phaseIds: newDragPhaseIds
+      }));
+      
+      if (dragPersonaId !== hoverPersonaId) {
+        dispatch(updatePersona({
+          id: hoverPersonaId,
+          phaseIds: newHoverPhaseIds
+        }));
+      }
     },
-    '& .persona-cell': {
-      borderRight: `1px solid ${theme.palette.divider}`,
-      minHeight: '100px',
-      padding: theme.spacing(1),
-      '&:last-child': {
-        borderRight: 'none',
-      },
-    },
-    '& .phase-cell': {
-      borderBottom: `1px solid ${theme.palette.divider}`,
-      minHeight: '150px',
-      padding: theme.spacing(1),
-      backgroundColor: theme.palette.background.paper,
-      '&:last-child': {
-        borderBottom: 'none',
-      },
-    },
-  }));
-  useEffect(() => {
-    console.log('Personas from Redux:', personas);
-    console.log('Phases from Redux:', phases);
-    console.log('Items by phase:', itemsByPhase);
-    console.log('Selected persona:', selectedPersona);
-  }, [personas, phases, itemsByPhase, selectedPersona]);
-  
+    [personas, phases, dispatch]
+  );
+
+  // Handle phase duplication
+  const handleDuplicatePhase = useCallback((phase: ExperienceMapPhase) => {
+    const newPhase = {
+      ...phase,
+      id: uuidv4(),
+      name: `${phase.name} (Copy)`,
+      items: [...phase.items.map(item => ({ ...item, id: uuidv4() }))]
+    };
+    
+    // Add the new phase to the store
+    dispatch(updatePhase(newPhase));
+    
+    // Add the phase to the current persona's phaseIds
+    if (selectedPersona && selectedPersona !== 'all') {
+      const persona = personas.find(p => p.id === selectedPersona);
+      if (persona) {
+        dispatch(updatePersona({
+          id: selectedPersona,
+          phaseIds: [...persona.phaseIds, newPhase.id]
+        }));
+      }
+    }
+  }, [phases, personas, selectedPersona, dispatch]);
+
+  // Handle phase deletion
+  const handleDeletePhase = useCallback((phaseId: string) => {
+    if (window.confirm('Are you sure you want to delete this phase? This will also remove all items in this phase.')) {
+      // Remove phase from all personas' phaseIds
+      personas.forEach(persona => {
+        if (persona.phaseIds.includes(phaseId)) {
+          dispatch(updatePersona({
+            id: persona.id,
+            phaseIds: persona.phaseIds.filter(id => id !== phaseId)
+          }));
+        }
+      });
+      
+      // The phase will be automatically removed from the phases array by the Redux reducer
+      // since it's no longer referenced by any persona
+    }
+  }, [personas, dispatch]);
+
   // Handle item movement (drag and drop)
   const handleMoveItem = useCallback((
     dragIndex: number, 
@@ -297,25 +480,64 @@ const ExperienceMapEditor: React.FC = () => {
     }
 
     return (
-      <Box sx={{ display: 'flex', overflowX: 'auto', p: 2, gap: 3 }}>
-        {phases.map((phase) => (
-          <PhaseColumn
-            key={phase.id}
-            phase={phase}
-            onEdit={handleEditPhase}
-            onEditItem={handleEditItem}
-            onDeleteItem={handleDeleteItem}
-            selectedPersona={selectedPersona}
-            items={itemsByPhase.get(phase.id) || []}
-            moveItem={handleMoveItem}
-          />
-        ))}
+      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        {selectedPersona === 'all' ? (
+          // Unified view with all personas and phases
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {personas.map((persona) => (
+              <Paper key={persona.id} sx={{ p: 2, mb: 3, backgroundColor: 'background.paper' }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                  <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
+                    {persona.name}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    {persona.phaseIds.length} phases
+                  </Typography>
+                </Box>
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
+                  {persona.phaseIds
+                    .map(phaseId => phases.find(p => p.id === phaseId))
+                    .filter((phase): phase is ExperienceMapPhase => phase !== undefined)
+                    .map((phase, index) => (
+                      <DraggablePhaseCard
+                        key={phase.id}
+                        phase={phase}
+                        index={index}
+                        personaId={persona.id}
+                        movePhase={movePhase}
+                        onEdit={handleEditPhase}
+                        onDuplicate={handleDuplicatePhase}
+                        onDelete={handleDeletePhase}
+                      />
+                    ))}
+                </Box>
+              </Paper>
+            ))}
+          </Box>
+        ) : (
+          // Single persona view
+          phases
+            .filter((phase) => phase.personaId === selectedPersona)
+            .map((phase, index) => (
+              <DraggablePhaseCard
+                key={phase.id}
+                phase={phase}
+                index={index}
+                personaId={selectedPersona}
+                movePhase={movePhase}
+                onEdit={handleEditPhase}
+                onDuplicate={handleDuplicatePhase}
+                onDelete={handleDeletePhase}
+              />
+            ))
+        )}
       </Box>
     );
   }, [phases, handleEditPhase, handleEditItem, handleDeleteItem, selectedPersona, itemsByPhase, handleMoveItem]);
 
   return (
     <DndProvider backend={HTML5Backend}>
+      <CustomDragLayer />
       <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
         {/* Toolbar */}
         <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -426,7 +648,7 @@ const ExperienceMapEditor: React.FC = () => {
                     <Typography variant="subtitle2" fontWeight="bold">Persona / Phase</Typography>
                   </Box>
                   {phases.map(phase => (
-                    <Box 
+                    <Box
                       key={phase.id} 
                       flex={1} 
                       minWidth={300} 
@@ -436,9 +658,10 @@ const ExperienceMapEditor: React.FC = () => {
                         justifyContent: 'space-between',
                         alignItems: 'center',
                         padding: 1,
-                        backgroundColor: 'grey.100',
+                        backgroundColor: phase.color || 'grey.100',
                         borderBottom: '1px solid',
-                        borderColor: 'divider'
+                        borderColor: 'divider',
+                        color: phase.color ? 'white' : 'inherit'
                       }}
                     >
                       <Typography variant="subtitle2" fontWeight="bold">
@@ -502,42 +725,76 @@ const ExperienceMapEditor: React.FC = () => {
                             setSelectedPersona(persona.id);
                             setActiveView('single');
                           }}
-                          sx={{ 
-                            cursor: 'pointer', 
-                            '&:hover': { backgroundColor: 'action.hover' },
+                          sx={{
+                            cursor: 'pointer',
                             padding: 1,
                             borderRight: '1px solid',
                             borderBottom: '1px solid',
                             borderColor: 'divider',
-                            minHeight: '120px'
+                            minHeight: '150px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: 1,
+                            overflow: 'auto',
+                            '&:hover': { 
+                              backgroundColor: 'action.hover',
+                              '& .experience-item': {
+                                boxShadow: 1,
+                                transform: 'translateY(-2px)'
+                              }
+                            }
                           }}
                         >
-                          {items.map((item, index) => (
-                            <Box key={item.id} mb={1}>
-                              <ExperienceMapItem
-                                item={item}
-                                phaseId={phase.id}
-                                index={index}
-                                moveItem={moveItem}
-                                onEdit={() => {}}
-                                onDelete={() => {}}
-                              />
-                            </Box>
-                          ))}
+                          <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 1, overflowY: 'auto', py: 1 }}>
+                            {items.map((item, index) => (
+                              <Box 
+                                key={item.id} 
+                                className="experience-item"
+                                sx={{
+                                  transition: 'all 0.2s ease-in-out',
+                                  borderRadius: 1,
+                                  overflow: 'hidden',
+                                  borderLeft: `3px solid ${phase.color || theme.palette.primary.main}`,
+                                  '&:hover': {
+                                    boxShadow: 2,
+                                    transform: 'translateY(-2px)'
+                                  }
+                                }}
+                              >
+                                <ExperienceMapItem
+                                  item={item}
+                                  phaseId={phase.id}
+                                  index={index}
+                                  moveItem={moveItem}
+                                  onEdit={() => {}}
+                                  onDelete={() => {}}
+                                />
+                              </Box>
+                            ))}
+                          </Box>
                           {items.length === 0 && (
-                            <Typography 
-                              variant="caption" 
-                              color="textSecondary"
+                            <Box 
                               sx={{
+                                flex: 1,
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
-                                height: '100%',
-                                minHeight: '80px'
+                                minHeight: '100px',
+                                border: '1px dashed',
+                                borderColor: 'divider',
+                                borderRadius: 1,
+                                backgroundColor: 'background.default'
                               }}
                             >
-                              No items
-                            </Typography>
+                              <Typography 
+                                variant="caption" 
+                                color="textSecondary"
+                                align="center"
+                                sx={{ p: 1 }}
+                              >
+                                Drop items here or click to add
+                              </Typography>
+                            </Box>
                           )}
                         </Box>
                       );
@@ -639,7 +896,10 @@ const PhaseColumn: React.FC<PhaseColumnProps> = (props) => {
       {/* Phase Description */}
       {phase.description && (
         <Box sx={{ p: 2, bgcolor: 'background.default' }}>
-          <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" color="text.secondary">
+          {phase.description}
+        </Typography>
+      </Box>
             {phase.description}
           </Typography>
         </Box>
