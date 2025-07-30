@@ -86,67 +86,121 @@ const ExperienceMapUploader: React.FC<ExperienceMapUploaderProps> = ({
   }, []);
 
   const handleUpload = useCallback(async () => {
+    console.group('handleUpload');
+    
     if (files.length === 0) {
+      const errorMsg = 'Please select at least one file to upload';
+      console.error(errorMsg);
       setError({
-        message: 'Please select at least one file to upload',
+        message: errorMsg,
         details: ''
       });
       return;
     }
 
+    console.log('Starting upload for files:', files.map(f => `${f.name} (${(f.size / 1024).toFixed(2)} KB)`));
     setIsUploading(true);
     setError(null);
+    setUploadProgress(0);
 
     try {
-      if (files.length === 0) {
-        throw new Error('No files selected for upload');
-      }
-
+      console.log('Starting document analysis for files:', files.map(f => f.name));
+      
       const result = await analyzeDocuments(
         files,
-        (progress: { progress: number }) => {
+        (progress: UploadProgressEvent) => {
+          console.log(`Upload progress: ${progress.progress}% - ${progress.file}`);
           setUploadProgress(progress.progress);
         }
       );
 
+      console.log('Received analysis result from API:', JSON.stringify(result, null, 2));
+
       // Process the analysis result with Redux
       if (!result) {
-        throw new Error('No analysis results returned from the server');
+        const errorMsg = 'No analysis results returned from the server';
+        console.error(errorMsg);
+        throw new Error(errorMsg);
       }
 
       // Validate the result structure
       if (!result.personas || !result.phases) {
-        console.error('Invalid analysis result format:', result);
-        throw new Error('Invalid analysis result format');
+        const errorDetails = {
+          hasPersonas: !!result.personas,
+          hasPhases: !!result.phases,
+          result
+        };
+        console.error('Invalid analysis result format - missing required fields:', errorDetails);
+        throw new Error('Invalid analysis result format: missing required fields');
       }
 
-      console.log('Dispatching processAIAnalysis with result:', result);
-      const action = processAIAnalysis(result);
-      console.log('Action to be dispatched:', action);
-      const dispatchResult = dispatch(action);
-      console.log('Dispatch result:', dispatchResult);
-      
-      // Show success message
-      setError({ message: 'success' });
-      
-      // Close the dialog after a short delay
-      const timer = setTimeout(() => {
-        if (onAnalysisComplete) {
-          onAnalysisComplete();
-        }
-      }, 1500);
+      // Ensure personas and phases are arrays
+      const validatedResult = {
+        ...result,
+        personas: Array.isArray(result.personas) ? result.personas : [],
+        phases: Array.isArray(result.phases) ? result.phases : [],
+        requirements: Array.isArray(result.requirements) ? result.requirements : []
+      };
 
-      // Cleanup timer on unmount
-      return () => clearTimeout(timer);
+      console.log('Dispatching processAIAnalysis with validated result:', {
+        personasCount: validatedResult.personas.length,
+        phasesCount: validatedResult.phases.length,
+        requirementsCount: validatedResult.requirements.length,
+        samplePersona: validatedResult.personas[0],
+        samplePhase: validatedResult.phases[0]
+      });
+      
+      // Log the validated result before dispatching
+      console.log('Dispatching processAIAnalysis with:', {
+        personas: `[${validatedResult.personas.length} personas]`,
+        phases: `[${validatedResult.phases.length} phases]`,
+        requirements: `[${validatedResult.requirements.length} requirements]`
+      });
+      
+      try {
+        console.log('Dispatching action...');
+        const dispatchResult = await dispatch(processAIAnalysis(validatedResult)).unwrap();
+        
+        // Log the result without accessing potentially undefined properties
+        console.log('Dispatch successful, result received with:', {
+          hasPersonas: Array.isArray(dispatchResult.personas) ? `[${dispatchResult.personas.length} personas]` : 'No personas',
+          hasPhases: Array.isArray(dispatchResult.phases) ? `[${dispatchResult.phases.length} phases]` : 'No phases',
+          hasRequirements: Array.isArray(dispatchResult.requirements) ? `[${dispatchResult.requirements.length} requirements]` : 'No requirements'
+        });
+        
+        // Show success message
+        console.log('Analysis completed successfully');
+        setError({ message: 'success' });
+        
+        // Close the dialog after a short delay
+        const timer = setTimeout(() => {
+          console.log('Calling onAnalysisComplete callback');
+          if (onAnalysisComplete) {
+            onAnalysisComplete();
+          }
+        }, 1500);
+
+        // Cleanup timer on unmount
+        return () => {
+          console.log('Cleaning up upload timer');
+          clearTimeout(timer);
+        };
+      } catch (dispatchError) {
+        const errorMsg = `Error dispatching processAIAnalysis: ${dispatchError instanceof Error ? dispatchError.message : 'Unknown error'}`;
+        console.error(errorMsg, dispatchError);
+        throw new Error(`Failed to update experience map: ${errorMsg}`);
+      }
     } catch (err) {
       console.error('Error analyzing documents:', err);
       setError({
         message: 'Failed to analyze documents',
         details: err instanceof Error ? err.message : 'An unknown error occurred'
       });
+      throw err; // Re-throw to be caught by the outer catch
     } finally {
       setIsUploading(false);
       setUploadProgress(0);
+      console.groupEnd();
     }
   }, [dispatch, files, onAnalysisComplete]);
 

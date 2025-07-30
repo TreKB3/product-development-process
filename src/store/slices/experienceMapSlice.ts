@@ -86,7 +86,10 @@ export const fetchExperienceMap = createAsyncThunk<
 >(
   'experienceMap/fetch',
   async (projectId, { rejectWithValue }) => {
+    console.group('fetchExperienceMap thunk');
     try {
+      console.log('Fetching experience map for project:', projectId);
+      
       // In a real app, this would be an API call
       // const response = await api.get(`/api/projects/${projectId}/experience-map`);
       // return response.data;
@@ -94,15 +97,74 @@ export const fetchExperienceMap = createAsyncThunk<
       // Mock data for now
       return new Promise(resolve => {
         setTimeout(() => {
-          resolve({
+          const mockData = {
             personas: [...initialState.personas],
             phases: [...initialState.phases],
             items: []
+          };
+          
+          console.log('Returning mock data:', {
+            personas: mockData.personas.length,
+            phases: mockData.phases.length,
+            items: mockData.items.length
           });
+          
+          resolve(mockData);
         }, 500);
       });
     } catch (error) {
-      return rejectWithValue('Failed to fetch experience map');
+      console.error('Error in fetchExperienceMap:', error);
+      return rejectWithValue(error instanceof Error ? error.message : 'Failed to fetch experience map');
+    } finally {
+      console.groupEnd();
+    }
+  }
+);
+
+// Async thunk for processing AI analysis
+export const processAIAnalysis = createAsyncThunk<DocumentAnalysisResult, DocumentAnalysisResult>(
+  'experienceMap/processAIAnalysis',
+  async (analysisResult, { rejectWithValue, getState }) => {
+    try {
+      console.group('processAIAnalysis Thunk');
+      console.log('Processing AI Analysis:', analysisResult);
+      
+      // Validate the input
+      if (!analysisResult) {
+        throw new Error('No analysis result provided');
+      }
+      
+      const { personas = [], phases = [], requirements = [] } = analysisResult;
+      
+      // Log the current state before updating
+      const currentState = (getState() as RootState).experienceMap;
+      console.log('Current state before update:', {
+        currentPersonas: currentState.personas,
+        currentPhases: currentState.phases
+      });
+      
+      // Log the new data being added
+      console.log('New data to be added:', {
+        personas: Array.isArray(personas) ? personas : [],
+        phases: Array.isArray(phases) ? phases : [],
+        requirements: Array.isArray(requirements) ? requirements : []
+      });
+      
+      // Return the validated result
+      const result = {
+        ...analysisResult,
+        personas: Array.isArray(personas) ? personas : [],
+        phases: Array.isArray(phases) ? phases : [],
+        requirements: Array.isArray(requirements) ? requirements : []
+      };
+      
+      console.log('Returning validated result:', result);
+      return result;
+    } catch (error) {
+      console.error('Error in processAIAnalysis thunk:', error);
+      return rejectWithValue(error instanceof Error ? error.message : 'Failed to process AI analysis');
+    } finally {
+      console.groupEnd();
     }
   }
 );
@@ -111,63 +173,6 @@ const experienceMapSlice = createSlice({
   name: 'experienceMap',
   initialState,
   reducers: {
-    // ... existing reducers ...
-    processAIAnalysis: (state, action: PayloadAction<DocumentAnalysisResult>) => {
-      console.log('Processing AI Analysis:', action.payload);
-      const { personas, phases } = action.payload;
-      
-      // Debug: Log current state before updates
-      console.log('Current personas before update:', state.personas);
-      console.log('Current phases before update:', state.phases);
-      
-      // Add new personas from AI analysis
-      const newPersonas = personas.filter(persona => 
-        !state.personas.some(p => p.name.toLowerCase() === persona.name.toLowerCase())
-      );
-      
-      if (newPersonas.length > 0) {
-        console.log('Adding new personas:', newPersonas);
-        newPersonas.forEach(persona => {
-          state.personas.push({
-            id: uuidv4(),
-            name: persona.name,
-            description: persona.description,
-            goals: persona.goals || [],
-            painPoints: persona.painPoints || [],
-            demographics: {
-              techSavviness: 'medium'
-            }
-          });
-        });
-      } else {
-        console.log('No new personas to add');
-      }
-
-      // Add new phases from AI analysis
-      const newPhases = phases.filter(phase => 
-        !state.phases.some(p => p.name.toLowerCase() === phase.name.toLowerCase())
-      );
-      
-      if (newPhases.length > 0) {
-        console.log('Adding new phases:', newPhases);
-        newPhases.forEach((phase, index) => {
-          state.phases.push({
-            id: uuidv4(),
-            name: phase.name,
-            description: phase.description,
-            order: phase.order || state.phases.length + index,
-            color: `hsl(${Math.floor(Math.random() * 360)}, 70%, 80%)`
-          });
-        });
-      } else {
-        console.log('No new phases to add');
-      }
-      
-      // Debug: Log state after updates
-      console.log('State after update - personas:', state.personas);
-      console.log('State after update - phases:', state.phases);
-    },
-    
     // Action to generate initial experience map items based on analysis
     generateInitialExperienceMap: (state, action: PayloadAction<{
       personaId: string;
@@ -285,19 +290,60 @@ const experienceMapSlice = createSlice({
   },
   extraReducers: (builder) => {
     builder
-      .addCase(fetchExperienceMap.pending, (state) => {
+      .addCase(processAIAnalysis.pending, (state) => {
         state.loading = true;
         state.error = null;
       })
-      .addCase(fetchExperienceMap.fulfilled, (state, action) => {
-        state.loading = false;
-        state.personas = action.payload.personas;
-        state.phases = action.payload.phases;
-        state.items = action.payload.items;
+      .addCase(processAIAnalysis.fulfilled, (state, action) => {
+        console.group('processAIAnalysis Reducer');
+        try {
+          const { personas = [], phases = [] } = action.payload;
+          
+          // Process personas
+          if (Array.isArray(personas)) {
+            personas.forEach(persona => {
+              if (persona?.name && !state.personas.some(p => p.name.toLowerCase() === persona.name.toLowerCase())) {
+                state.personas.push({
+                  id: uuidv4(),
+                  name: persona.name,
+                  description: persona.description || `Persona: ${persona.name}`,
+                  goals: Array.isArray(persona.goals) ? persona.goals : [],
+                  painPoints: Array.isArray(persona.painPoints) ? persona.painPoints : [],
+                  demographics: { techSavviness: 'medium' as const }
+                });
+              }
+            });
+          }
+          
+          // Process phases
+          if (Array.isArray(phases)) {
+            phases.forEach((phase: { name: string; description?: string; order?: number; color?: string }, index) => {
+              if (phase?.name && !state.phases.some(p => p.name.toLowerCase() === phase.name.toLowerCase())) {
+                state.phases.push({
+                  id: uuidv4(),
+                  name: phase.name,
+                  description: phase.description || `Phase: ${phase.name}`,
+                  order: typeof phase.order === 'number' ? phase.order : state.phases.length + index,
+                  color: phase.color || `hsl(${Math.floor(Math.random() * 360)}, 70%, 80%)`
+                });
+              }
+            });
+          }
+          
+          state.loading = false;
+          state.error = null;
+        } catch (error) {
+          console.error('Error in processAIAnalysis reducer:', error);
+          state.loading = false;
+          state.error = error instanceof Error ? error.message : 'Failed to process AI analysis';
+        } finally {
+          console.groupEnd();
+        }
       })
-      .addCase(fetchExperienceMap.rejected, (state, action) => {
+      .addCase(processAIAnalysis.rejected, (state, action) => {
         state.loading = false;
-        state.error = action.payload as string;
+        state.error = action.error.message || 'Failed to process AI analysis';
+        console.error('Error in processAIAnalysis:', action.error);
       });
   },
 });
@@ -321,8 +367,17 @@ export const selectItems = createSelector(
 );
 
 export const selectItemsByPhase = createSelector(
-  [selectItems, (_, phaseId: string) => phaseId],
-  (items, phaseId) => items.filter(item => item.phaseId === phaseId)
+  [
+    selectItems, 
+    (_, phaseId: string, personaId?: string) => ({ phaseId, personaId })
+  ],
+  (items, { phaseId, personaId }) => {
+    return items.filter(item => {
+      const matchesPhase = phaseId ? item.phaseId === phaseId : true;
+      const matchesPersona = personaId ? item.personaId === personaId : true;
+      return matchesPhase && matchesPersona;
+    });
+  }
 );
 
 export const selectPersonaById = createSelector(
@@ -337,7 +392,6 @@ export const selectPhaseById = createSelector(
 
 // Export actions
 export const {
-  setLoading,
   setError,
   setCurrentMap,
   addPersona,
@@ -347,8 +401,7 @@ export const {
   addItem,
   updateItem,
   deleteItem,
-  reorderItems,
-  processAIAnalysis,
+  reorderItems
 } = experienceMapSlice.actions;
 
 export default experienceMapSlice.reducer;

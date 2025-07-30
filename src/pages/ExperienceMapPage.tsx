@@ -62,11 +62,24 @@ const ExperienceMapPage: React.FC = () => {
   
   // Load data when component mounts
   useEffect(() => {
-    if (projectId) {
-      // Load experience map data
-      // This would be handled by the ExperienceMapEditor component
+    console.group('ExperienceMapPage - useEffect');
+    try {
+      if (projectId) {
+        console.log('Loading experience map data for project:', projectId);
+        // The ExperienceMapEditor component will handle loading the actual data
+        console.log('Current Redux state:', {
+          personas: personas.length,
+          phases: phases.length,
+          loading,
+          error
+        });
+      }
+    } catch (error) {
+      console.error('Error in ExperienceMapPage useEffect:', error);
+    } finally {
+      console.groupEnd();
     }
-  }, [dispatch, projectId]);
+  }, [projectId, personas.length, phases.length, loading, error]);
   
   const handleBackToProject = () => {
     navigate(`/projects/${projectId}`);

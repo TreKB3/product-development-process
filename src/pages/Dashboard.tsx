@@ -241,8 +241,10 @@ const Dashboard: React.FC = () => {
                             project.status === 'in-progress' ? 'primary.main' :
                             project.status === 'review' ? 'warning.main' :
                             project.status === 'completed' ? 'success.main' : 'default',
-                          ml: 2
+                          ml: 2,
+                          cursor: 'default' // Make it clear this isn't clickable
                         }}
+                        onClick={undefined} // Explicitly set to undefined to prevent any default click handlers
                       />
                     </ListItemButton>
                     {index < recentProjects.length - 1 && <Divider component="li" />}
