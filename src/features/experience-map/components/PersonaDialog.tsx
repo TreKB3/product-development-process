@@ -178,6 +178,7 @@ export const PersonaDialog: React.FC<PersonaDialogProps> = ({
   const onSubmit: SubmitHandler<PersonaFormData> = (data: PersonaFormData) => {
     const personaData: ExperienceMapPersona = {
       ...data,
+      phaseIds: persona?.phaseIds || [], // Preserve existing phaseIds or initialize as empty array
       demographics: {
         age: data.demographics.age,
         occupation: data.demographics.occupation,

@@ -67,15 +67,6 @@ import PhaseDialog from './components/PhaseDialog';
 import PersonaDialog from './components/PersonaDialog';
 
 // Types
-interface PhaseColumnProps {
-  phase: ExperienceMapPhase;
-  onEdit: (phaseId: string) => void;
-  onEditItem: (item: ExperienceMapItemType) => void;
-  onDeleteItem: (itemId: string) => void;
-  selectedPersona: string;
-  items: ExperienceMapItemType[];
-  moveItem: (dragIndex: number, hoverIndex: number, dragPhaseId: string, hoverPhaseId: string) => void;
-}
 
 const CustomDragLayer = () => {
   const { itemType, isDragging, item, currentOffset } = useDragLayer((monitor) => ({
@@ -127,8 +118,8 @@ const DraggablePhaseCard: React.FC<{
   personaId: string;
   onDuplicate: (phase: ExperienceMapPhase) => void;
   onDelete: (phaseId: string) => void;
-  movePhase: (dragIndex: number, hoverIndex: number, dragPersonaId: string, hoverPersonaId: string) => void;
-}> = ({ phase, index, personaId, onDuplicate, onDelete, movePhase }) => {
+  onMovePhase: (dragIndex: number, hoverIndex: number, dragPersonaId: string, hoverPersonaId: string) => void;
+}> = ({ phase, index, personaId, onDuplicate, onDelete, onMovePhase }) => {
   const [{ isDragging }, dragRef] = useDrag({
     type: 'PHASE',
     item: { type: 'PHASE', id: phase.id, index, personaId, phase },
@@ -153,7 +144,7 @@ const DraggablePhaseCard: React.FC<{
       }
 
       // Time to actually perform the action
-      movePhase(dragIndex, hoverIndex, dragPersonaId, hoverPersonaId);
+      onMovePhase(dragIndex, hoverIndex, dragPersonaId, hoverPersonaId);
 
       // Note: we're mutating the monitor item here!
       // Generally it's better to avoid mutations,
@@ -504,7 +495,7 @@ const DraggablePhaseCard: React.FC<{
                         phase={phase}
                         index={index}
                         personaId={persona.id}
-                        movePhase={movePhase}
+                        onMovePhase={movePhase}
                         onEdit={handleEditPhase}
                         onDuplicate={handleDuplicatePhase}
                         onDelete={handleDeletePhase}
@@ -896,10 +887,7 @@ const PhaseColumn: React.FC<PhaseColumnProps> = (props) => {
       {/* Phase Description */}
       {phase.description && (
         <Box sx={{ p: 2, bgcolor: 'background.default' }}>
-        <Typography variant="body2" color="text.secondary">
-          {phase.description}
-        </Typography>
-      </Box>
+          <Typography variant="body2" color="text.secondary">
             {phase.description}
           </Typography>
         </Box>
@@ -941,6 +929,16 @@ const PhaseColumn: React.FC<PhaseColumnProps> = (props) => {
         </Button>
       </Box>
     </Paper>
+  );
+};
+
+const ExperienceMapEditor: React.FC = () => {
+  // ... existing component code ...
+  
+  return (
+    <DndProvider backend={HTML5Backend}>
+      {/* ... existing JSX ... */}
+    </DndProvider>
   );
 };
 

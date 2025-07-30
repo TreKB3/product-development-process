@@ -331,11 +331,14 @@ const experienceMapSlice = createSlice({
                   goals: Array.isArray(persona.goals) ? persona.goals : [],
                   painPoints: Array.isArray(persona.painPoints) ? persona.painPoints : [],
                   phaseIds: [], // Initialize with empty phaseIds array
-                  demographics: { 
+                  demographics: {
                     techSavviness: 'medium' as const,
-                    age: persona.demographics?.age,
-                    occupation: persona.demographics?.occupation
-                  }
+                    age: persona?.demographics?.age ?? '',
+                    occupation: persona?.demographics?.occupation ?? ''
+                  },
+                  // For backward compatibility with components that expect these at the root level
+                  age: persona?.demographics?.age ?? '',
+                  occupation: persona?.demographics?.occupation ?? ''
                 });
               }
             });

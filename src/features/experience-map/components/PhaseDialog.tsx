@@ -126,6 +126,7 @@ export const PhaseDialog: React.FC<PhaseDialogProps> = ({
       description: data.description || '',
       order: data.order,
       color: data.color || '#ffffff',
+      items: phase?.items || [], // Preserve existing items or initialize as empty array
     };
 
     if (phase) {
