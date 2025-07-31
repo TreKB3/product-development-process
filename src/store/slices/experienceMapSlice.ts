@@ -10,11 +10,15 @@ export interface ExperienceMapPersona {
   goals: string[];
   painPoints: string[];
   phaseIds: string[]; // Array of phase IDs associated with this persona
-  demographics: {
+  demographics?: {
     age?: string;
     occupation?: string;
     techSavviness?: 'low' | 'medium' | 'high';
   };
+  // For backward compatibility
+  age?: string;
+  occupation?: string;
+  techSavviness?: 'low' | 'medium' | 'high';
 }
 
 export interface ExperienceMapPhase {
@@ -311,6 +315,49 @@ const experienceMapSlice = createSlice({
   },
   extraReducers: (builder) => {
     builder
+      // Handle fetchExperienceMap
+      .addCase(fetchExperienceMap.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(fetchExperienceMap.fulfilled, (state, action) => {
+        console.group('fetchExperienceMap Reducer');
+        try {
+          const { personas = [], phases = [], items = [] } = action.payload;
+          
+          console.log('Updating state with fetched data:', {
+            personas: personas.length,
+            phases: phases.length,
+            items: items.length
+          });
+          
+          // Update state with the fetched data
+          state.personas = personas;
+          state.phases = phases;
+          state.items = items;
+          state.loading = false;
+          state.error = null;
+          
+          console.log('State after update:', {
+            personas: state.personas.length,
+            phases: state.phases.length,
+            items: state.items.length
+          });
+        } catch (error) {
+          console.error('Error in fetchExperienceMap reducer:', error);
+          state.loading = false;
+          state.error = error instanceof Error ? error.message : 'Failed to load experience map';
+        } finally {
+          console.groupEnd();
+        }
+      })
+      .addCase(fetchExperienceMap.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.error.message || 'Failed to load experience map';
+        console.error('Error in fetchExperienceMap:', action.error);
+      })
+      
+      // Handle processAIAnalysis
       .addCase(processAIAnalysis.pending, (state) => {
         state.loading = true;
         state.error = null;
@@ -322,9 +369,15 @@ const experienceMapSlice = createSlice({
           
           // Process personas
           if (Array.isArray(personas)) {
-            personas.forEach(persona => {
+            personas.forEach((persona: any) => {
               if (persona?.name && !state.personas.some(p => p.name.toLowerCase() === persona.name.toLowerCase())) {
-                state.personas.push({
+                // Safely extract age and occupation from persona or demographics
+                const personaAge = typeof persona.age === 'string' ? persona.age : 
+                                 (persona.demographics?.age || '');
+                const personaOccupation = typeof persona.occupation === 'string' ? persona.occupation : 
+                                       (persona.demographics?.occupation || '');
+                
+                const newPersona: ExperienceMapPersona = {
                   id: uuidv4(),
                   name: persona.name,
                   description: persona.description || `Persona: ${persona.name}`,
@@ -332,14 +385,16 @@ const experienceMapSlice = createSlice({
                   painPoints: Array.isArray(persona.painPoints) ? persona.painPoints : [],
                   phaseIds: [], // Initialize with empty phaseIds array
                   demographics: {
-                    techSavviness: 'medium' as const,
-                    age: persona?.demographics?.age ?? '',
-                    occupation: persona?.demographics?.occupation ?? ''
+                    techSavviness: 'medium',
+                    age: personaAge,
+                    occupation: personaOccupation
                   },
                   // For backward compatibility with components that expect these at the root level
-                  age: persona?.demographics?.age ?? '',
-                  occupation: persona?.demographics?.occupation ?? ''
-                });
+                  age: personaAge,
+                  occupation: personaOccupation
+                };
+                
+                state.personas.push(newPersona);
               }
             });
           }

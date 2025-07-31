@@ -116,10 +116,11 @@ const DraggablePhaseCard: React.FC<{
   phase: ExperienceMapPhase;
   index: number;
   personaId: string;
+  onEdit: (phaseId: string) => void;
   onDuplicate: (phase: ExperienceMapPhase) => void;
   onDelete: (phaseId: string) => void;
   onMovePhase: (dragIndex: number, hoverIndex: number, dragPersonaId: string, hoverPersonaId: string) => void;
-}> = ({ phase, index, personaId, onDuplicate, onDelete, onMovePhase }) => {
+}> = ({ phase, index, personaId, onEdit, onDuplicate, onDelete, onMovePhase }) => {
   const [{ isDragging }, dragRef] = useDrag({
     type: 'PHASE',
     item: { type: 'PHASE', id: phase.id, index, personaId, phase },
@@ -515,7 +516,7 @@ const DraggablePhaseCard: React.FC<{
                 phase={phase}
                 index={index}
                 personaId={selectedPersona}
-                movePhase={movePhase}
+                onMovePhase={movePhase}
                 onEdit={handleEditPhase}
                 onDuplicate={handleDuplicatePhase}
                 onDelete={handleDeletePhase}

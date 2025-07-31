@@ -129,10 +129,20 @@ const StoryDialog: React.FC<StoryDialogProps> = ({ open, onClose, story, onSave 
           <Chip
             key={point}
             label={point}
-            onClick={() => setPoints(points === point ? undefined : point)}
+            onClick={(e: React.MouseEvent) => {
+              e.stopPropagation();
+              setPoints(points === point ? undefined : point);
+            }}
+            onDelete={points === point ? () => setPoints(undefined) : undefined}
             variant={points === point ? 'filled' : 'outlined'}
             color={points === point ? 'primary' : 'default'}
-            sx={{ minWidth: 40 }}
+            sx={{ 
+              minWidth: 40,
+              cursor: 'pointer',
+              '&:hover': {
+                backgroundColor: 'action.hover',
+              },
+            }}
           />
         ))}
         <TextField

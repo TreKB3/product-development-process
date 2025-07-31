@@ -38,10 +38,10 @@ import { v4 as uuidv4 } from 'uuid';
 
 import { 
   ExperienceMapPhase,
-  addPhase, 
-  updatePhase,
   selectPhaseById,
-  selectPhases 
+  selectPhases,
+  updatePhase,
+  updatePhases
 } from '../../../store/slices/experienceMapSlice';
 
 interface PhaseDialogProps {
@@ -132,7 +132,12 @@ export const PhaseDialog: React.FC<PhaseDialogProps> = ({
     if (phase) {
       dispatch(updatePhase(phaseData));
     } else {
-      dispatch(addPhase(phaseData));
+      // Create a new phase with the provided data and an empty items array
+      const newPhase = {
+        ...phaseData,
+        items: []
+      };
+      dispatch(updatePhases([...phases, newPhase]));
     }
     onClose();
   };

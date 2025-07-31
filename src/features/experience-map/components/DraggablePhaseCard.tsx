@@ -3,7 +3,7 @@ import { useDrag, useDrop } from 'react-dnd';
 import { Box, Paper, Typography, IconButton, Tooltip } from '@mui/material';
 import { useTheme } from '@mui/material/styles';
 import { DragIndicator, ContentCopy, Delete } from '@mui/icons-material';
-import { ExperienceMapPhase } from '../types';
+import { ExperienceMapPhase } from '../../../store/slices/experienceMapSlice';
 
 interface DraggablePhaseCardProps {
   phase: ExperienceMapPhase;
